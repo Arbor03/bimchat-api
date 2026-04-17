@@ -98,7 +98,8 @@ function authenticateToken(req, res, next) {
 // Register
 app.post('/auth/register', async (req, res) => {
     try {
-        const { email, fullName, password } = req.body;
+        const { email, full_name, password } = req.body;
+const fullName = full_name;
         const passwordHash = await bcrypt.hash(password, 10);
 
         const result = await pool.query(
