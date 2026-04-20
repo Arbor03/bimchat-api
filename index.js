@@ -75,6 +75,18 @@ async function initDB() {
             )
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                project_name TEXT NOT NULL,
+                sender TEXT NOT NULL,
+                receiver TEXT,
+                message TEXT NOT NULL,
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         console.log('Database initialized successfully!');
     } catch (err) {
         console.error('Database init error:', err);
@@ -99,7 +111,7 @@ function authenticateToken(req, res, next) {
 app.post('/auth/register', async (req, res) => {
     try {
         const { email, full_name, password } = req.body;
-const fullName = full_name;
+        const fullName = full_name;
         const passwordHash = await bcrypt.hash(password, 10);
 
         const result = await pool.query(
@@ -173,11 +185,11 @@ app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
 app.post('/tasks', authenticateToken, async (req, res) => {
     try {
         const { id, project_name, description, assignee, created_by, element_id, element_name, view_name, status } = req.body;
-const projectName = project_name;
-const createdBy = created_by;
-const elementId = element_id;
-const elementName = element_name;
-const viewName = view_name;
+        const projectName = project_name;
+        const createdBy = created_by;
+        const elementId = element_id;
+        const elementName = element_name;
+        const viewName = view_name;
 
         await pool.query(
             `INSERT INTO tasks (id, project_name, description, assignee, created_by, element_id, element_name, view_name, status)
@@ -185,7 +197,6 @@ const viewName = view_name;
             [id, projectName, description, assignee, createdBy, elementId || -1, elementName || '', viewName || '', status || 'Open']
         );
 
-        // Create notification
         await pool.query(
             `INSERT INTO notifications (id, type, message, created_by, task_id, project_name)
              VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -243,15 +254,14 @@ app.get('/comments/:taskId', authenticateToken, async (req, res) => {
 app.post('/comments', authenticateToken, async (req, res) => {
     try {
         const { id, task_id, author, text, project_name } = req.body;
-const taskId = task_id;
-const projectName = project_name;
+        const taskId = task_id;
+        const projectName = project_name;
 
         await pool.query(
             'INSERT INTO comments (id, task_id, author, text) VALUES ($1, $2, $3, $4)',
             [id, taskId, author, text]
         );
 
-        // Create notification
         await pool.query(
             `INSERT INTO notifications (id, type, message, created_by, task_id, project_name)
              VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -289,6 +299,75 @@ app.put('/notifications/read/:projectName', authenticateToken, async (req, res) 
             [req.params.projectName, req.user.email]
         );
         res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==================== MESSAGE ROUTES ====================
+
+// Get group messages
+app.get('/messages/group/:projectName', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM messages 
+             WHERE project_name = $1 AND receiver IS NULL 
+             ORDER BY created_at ASC LIMIT 100`,
+            [req.params.projectName]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get private messages
+app.get('/messages/private/:projectName/:otherUser', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM messages 
+             WHERE project_name = $1 AND (
+                (sender = $2 AND receiver = $3) OR 
+                (sender = $3 AND receiver = $2)
+             )
+             ORDER BY created_at ASC LIMIT 100`,
+            [req.params.projectName, req.user.email, req.params.otherUser]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Send message
+app.post('/messages', authenticateToken, async (req, res) => {
+    try {
+        const { id, project_name, message, receiver } = req.body;
+        await pool.query(
+            `INSERT INTO messages (id, project_name, sender, receiver, message)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [id, project_name, req.user.email, receiver || null, message]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get users in project
+app.get('/users/:projectName', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT DISTINCT u.email, u.full_name 
+             FROM users u
+             WHERE u.email IN (
+                SELECT DISTINCT sender FROM messages WHERE project_name = $1
+                UNION
+                SELECT DISTINCT created_by FROM tasks WHERE project_name = $1
+             )`,
+            [req.params.projectName]
+        );
+        res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
