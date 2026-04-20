@@ -242,7 +242,9 @@ app.get('/comments/:taskId', authenticateToken, async (req, res) => {
 // Create comment
 app.post('/comments', authenticateToken, async (req, res) => {
     try {
-        const { id, taskId, author, text, projectName } = req.body;
+        const { id, task_id, author, text, project_name } = req.body;
+const taskId = task_id;
+const projectName = project_name;
 
         await pool.query(
             'INSERT INTO comments (id, task_id, author, text) VALUES ($1, $2, $3, $4)',
