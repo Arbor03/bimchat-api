@@ -9,13 +9,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Database connection
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
 
-// Initialize database tables
 async function initDB() {
     try {
         await pool.query(`
@@ -82,10 +80,15 @@ async function initDB() {
                 sender TEXT NOT NULL,
                 receiver TEXT,
                 message TEXT NOT NULL,
+                element_id INTEGER DEFAULT -1,
+                element_name TEXT,
                 is_read BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+
+        try { await pool.query(`ALTER TABLE messages ADD COLUMN element_id INTEGER DEFAULT -1`); } catch {}
+        try { await pool.query(`ALTER TABLE messages ADD COLUMN element_name TEXT`); } catch {}
 
         console.log('Database initialized successfully!');
     } catch (err) {
@@ -93,7 +96,6 @@ async function initDB() {
     }
 }
 
-// Middleware - verify JWT token
 function authenticateToken(req, res, next) {
     const token = req.headers['authorization']?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No token provided' });
@@ -107,7 +109,6 @@ function authenticateToken(req, res, next) {
 
 // ==================== AUTH ROUTES ====================
 
-// Register
 app.post('/auth/register', async (req, res) => {
     try {
         const { email, full_name, password } = req.body;
@@ -135,7 +136,6 @@ app.post('/auth/register', async (req, res) => {
     }
 });
 
-// Login
 app.post('/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -168,7 +168,6 @@ app.post('/auth/login', async (req, res) => {
 
 // ==================== TASK ROUTES ====================
 
-// Get tasks by project
 app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -181,26 +180,20 @@ app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
     }
 });
 
-// Create task
 app.post('/tasks', authenticateToken, async (req, res) => {
     try {
         const { id, project_name, description, assignee, created_by, element_id, element_name, view_name, status } = req.body;
-        const projectName = project_name;
-        const createdBy = created_by;
-        const elementId = element_id;
-        const elementName = element_name;
-        const viewName = view_name;
 
         await pool.query(
             `INSERT INTO tasks (id, project_name, description, assignee, created_by, element_id, element_name, view_name, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [id, projectName, description, assignee, createdBy, elementId || -1, elementName || '', viewName || '', status || 'Open']
+            [id, project_name, description, assignee, created_by, element_id || -1, element_name || '', view_name || '', status || 'Open']
         );
 
         await pool.query(
             `INSERT INTO notifications (id, type, message, created_by, task_id, project_name)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [require('crypto').randomUUID(), 'NewTask', `${createdBy} created new task: '${description}'`, createdBy, id, projectName]
+            [require('crypto').randomUUID(), 'NewTask', `${created_by} created new task: '${description}'`, created_by, id, project_name]
         );
 
         res.json({ success: true });
@@ -209,7 +202,6 @@ app.post('/tasks', authenticateToken, async (req, res) => {
     }
 });
 
-// Update task
 app.put('/tasks/:id', authenticateToken, async (req, res) => {
     try {
         const { status, viewName, assignee } = req.body;
@@ -225,7 +217,6 @@ app.put('/tasks/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Delete task
 app.delete('/tasks/:id', authenticateToken, async (req, res) => {
     try {
         await pool.query('DELETE FROM tasks WHERE id = $1', [req.params.id]);
@@ -237,7 +228,6 @@ app.delete('/tasks/:id', authenticateToken, async (req, res) => {
 
 // ==================== COMMENT ROUTES ====================
 
-// Get comments by task
 app.get('/comments/:taskId', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -250,22 +240,19 @@ app.get('/comments/:taskId', authenticateToken, async (req, res) => {
     }
 });
 
-// Create comment
 app.post('/comments', authenticateToken, async (req, res) => {
     try {
         const { id, task_id, author, text, project_name } = req.body;
-        const taskId = task_id;
-        const projectName = project_name;
 
         await pool.query(
             'INSERT INTO comments (id, task_id, author, text) VALUES ($1, $2, $3, $4)',
-            [id, taskId, author, text]
+            [id, task_id, author, text]
         );
 
         await pool.query(
             `INSERT INTO notifications (id, type, message, created_by, task_id, project_name)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [require('crypto').randomUUID(), 'NewComment', `${author} commented: '${text}'`, author, taskId, projectName]
+            [require('crypto').randomUUID(), 'NewComment', `${author} commented: '${text}'`, author, task_id, project_name]
         );
 
         res.json({ success: true });
@@ -276,7 +263,6 @@ app.post('/comments', authenticateToken, async (req, res) => {
 
 // ==================== NOTIFICATION ROUTES ====================
 
-// Get unread notifications
 app.get('/notifications/:projectName', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -291,7 +277,6 @@ app.get('/notifications/:projectName', authenticateToken, async (req, res) => {
     }
 });
 
-// Mark notifications as read
 app.put('/notifications/read/:projectName', authenticateToken, async (req, res) => {
     try {
         await pool.query(
@@ -306,7 +291,6 @@ app.put('/notifications/read/:projectName', authenticateToken, async (req, res) 
 
 // ==================== MESSAGE ROUTES ====================
 
-// Get group messages
 app.get('/messages/group/:projectName', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -321,7 +305,6 @@ app.get('/messages/group/:projectName', authenticateToken, async (req, res) => {
     }
 });
 
-// Get private messages
 app.get('/messages/private/:projectName/:otherUser', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -339,14 +322,13 @@ app.get('/messages/private/:projectName/:otherUser', authenticateToken, async (r
     }
 });
 
-// Send message
 app.post('/messages', authenticateToken, async (req, res) => {
     try {
-        const { id, project_name, message, receiver } = req.body;
+        const { id, project_name, message, receiver, element_id, element_name } = req.body;
         await pool.query(
-            `INSERT INTO messages (id, project_name, sender, receiver, message)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [id, project_name, req.user.email, receiver || null, message]
+            `INSERT INTO messages (id, project_name, sender, receiver, message, element_id, element_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [id, project_name, req.user.email, receiver || null, message, element_id || -1, element_name || null]
         );
         res.json({ success: true });
     } catch (err) {
@@ -354,7 +336,6 @@ app.post('/messages', authenticateToken, async (req, res) => {
     }
 });
 
-// Get users in project
 app.get('/users/:projectName', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
