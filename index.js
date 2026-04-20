@@ -172,7 +172,12 @@ app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
 // Create task
 app.post('/tasks', authenticateToken, async (req, res) => {
     try {
-        const { id, projectName, description, assignee, createdBy, elementId, elementName, viewName, status } = req.body;
+        const { id, project_name, description, assignee, created_by, element_id, element_name, view_name, status } = req.body;
+const projectName = project_name;
+const createdBy = created_by;
+const elementId = element_id;
+const elementName = element_name;
+const viewName = view_name;
 
         await pool.query(
             `INSERT INTO tasks (id, project_name, description, assignee, created_by, element_id, element_name, view_name, status)
