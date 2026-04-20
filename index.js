@@ -358,14 +358,7 @@ app.post('/messages', authenticateToken, async (req, res) => {
 app.get('/users/:projectName', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT DISTINCT u.email, u.full_name 
-             FROM users u
-             WHERE u.email IN (
-                SELECT DISTINCT sender FROM messages WHERE project_name = $1
-                UNION
-                SELECT DISTINCT created_by FROM tasks WHERE project_name = $1
-             )`,
-            [req.params.projectName]
+            `SELECT email, full_name FROM users ORDER BY full_name ASC`
         );
         res.json(result.rows);
     } catch (err) {
