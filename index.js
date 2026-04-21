@@ -462,6 +462,11 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
             const ext = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
             const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(ext);
             const resourceType = isImage ? 'image' : 'raw';
+            // Fix PDF URL - shto fl_attachment që të downloadet në vend të hapjes
+            let fileUrl = req.file.path;
+            if (!isImage) {
+                fileUrl = fileUrl.replace('/upload/', '/upload/fl_attachment/');
+            }
 
             const result = await pool.query(
                 `INSERT INTO attachments 
@@ -472,7 +477,7 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
                 [
                     attachmentId,
                     userEmail,
-                    req.file.path,              // Cloudinary URL
+                    fileUrl,                    // Cloudinary URL
                     req.file.originalname,
                     req.file.mimetype,
                     req.file.size,
