@@ -268,7 +268,7 @@ app.post('/tasks', authenticateToken, async (req, res) => {
             [require('crypto').randomUUID(), 'NewTask', `${created_by} created new task: '${description}'`, created_by, id, project_name]
         );
 
-        res.json({ success: true });
+        res.json({ success: true, id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
