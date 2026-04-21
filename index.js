@@ -4,6 +4,9 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const cloudinary = require('cloudinary').v2;
+const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const app = express();
 app.use(cors());
@@ -12,6 +15,54 @@ app.use(express.json());
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
+});
+
+// ==================== CLOUDINARY CONFIG ====================
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+});
+
+if (!process.env.CLOUDINARY_CLOUD_NAME) {
+    console.error('⚠️  CLOUDINARY credentials not configured!');
+} else {
+    console.log('✅ Cloudinary configured:', process.env.CLOUDINARY_CLOUD_NAME);
+}
+
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.dwg', '.rvt'];
+
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: (req, file) => {
+        const ext = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+        const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(ext);
+        
+        return {
+            folder: 'bimchat',
+            resource_type: isImage ? 'image' : 'raw',
+            public_id: `${Date.now()}_${file.originalname.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, '_')}`,
+            format: isImage ? undefined : ext.substring(1)
+        };
+    }
+});
+
+const fileFilter = (req, file, cb) => {
+    const ext = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        return cb(new Error(`File type not allowed. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`), false);
+    }
+    cb(null, true);
+};
+
+const upload = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10 MB
+    }
 });
 
 async function initDB() {
@@ -90,6 +141,27 @@ async function initDB() {
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_id INTEGER DEFAULT -1`); } catch {}
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_name TEXT`); } catch {}
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS attachments (
+                id TEXT PRIMARY KEY,
+                user_email TEXT NOT NULL,
+                file_url TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                file_size INTEGER NOT NULL,
+                cloudinary_public_id TEXT NOT NULL,
+                resource_type TEXT DEFAULT 'image',
+                message_id TEXT REFERENCES messages(id) ON DELETE CASCADE,
+                task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+                comment_id TEXT REFERENCES comments(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_attachments_task ON attachments(task_id)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_attachments_comment ON attachments(comment_id)`); } catch {}
+        
         console.log('Database initialized successfully!');
     } catch (err) {
         console.error('Database init error:', err);
@@ -343,6 +415,211 @@ app.get('/users/:projectName', authenticateToken, async (req, res) => {
         );
         res.json(result.rows);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==================== ATTACHMENT ROUTES ====================
+
+/**
+ * POST /attachments/upload
+ * Upload një skedar në Cloudinary dhe ruaj në database
+ * 
+ * Body (multipart/form-data):
+ *   - file: skedari (max 10 MB)
+ *   - message_id (optional): ID i mesazhit
+ *   - task_id (optional): ID i task-ut  
+ *   - comment_id (optional): ID i komentit
+ */
+app.post('/attachments/upload', authenticateToken, (req, res) => {
+    upload.single('file')(req, res, async (err) => {
+        // Handle multer errors
+        if (err) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(400).json({ error: 'File too large. Maximum size is 10 MB.' });
+            }
+            return res.status(400).json({ error: err.message });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        try {
+            const { message_id, task_id, comment_id } = req.body;
+            const userEmail = req.user.email;
+
+            // Validim: vetëm një parent ose asnjë
+            const parentCount = [message_id, task_id, comment_id].filter(Boolean).length;
+            if (parentCount > 1) {
+                // Cleanup: fshi nga Cloudinary
+                const resourceType = req.file.mimetype.startsWith('image/') ? 'image' : 'raw';
+                await cloudinary.uploader.destroy(req.file.filename, { resource_type: resourceType });
+                return res.status(400).json({ error: 'Attachment can belong to only one entity' });
+            }
+
+            const attachmentId = require('crypto').randomUUID();
+            const ext = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
+            const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(ext);
+            const resourceType = isImage ? 'image' : 'raw';
+
+            const result = await pool.query(
+                `INSERT INTO attachments 
+                    (id, user_email, file_url, file_name, file_type, file_size, 
+                     cloudinary_public_id, resource_type, message_id, task_id, comment_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 RETURNING *`,
+                [
+                    attachmentId,
+                    userEmail,
+                    req.file.path,              // Cloudinary URL
+                    req.file.originalname,
+                    req.file.mimetype,
+                    req.file.size,
+                    req.file.filename,          // Cloudinary public_id
+                    resourceType,
+                    message_id || null,
+                    task_id || null,
+                    comment_id || null
+                ]
+            );
+
+            console.log(`✅ Attachment uploaded: ${req.file.originalname} by ${userEmail}`);
+
+            res.status(201).json({
+                success: true,
+                attachment: result.rows[0]
+            });
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            
+            // Cleanup nëse database fail
+            if (req.file && req.file.filename) {
+                try {
+                    const resourceType = req.file.mimetype.startsWith('image/') ? 'image' : 'raw';
+                    await cloudinary.uploader.destroy(req.file.filename, { resource_type: resourceType });
+                } catch (cleanupErr) {
+                    console.error('Cleanup error:', cleanupErr);
+                }
+            }
+            
+            res.status(500).json({ error: error.message });
+        }
+    });
+});
+
+/**
+ * GET /attachments/:id
+ * Merr info për një attachment
+ */
+app.get('/attachments/:id', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM attachments WHERE id = $1',
+            [req.params.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Attachment not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /attachments/message/:messageId
+ * Merr të gjithë attachments e një mesazhi
+ */
+app.get('/attachments/message/:messageId', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM attachments WHERE message_id = $1 ORDER BY created_at ASC',
+            [req.params.messageId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /attachments/task/:taskId
+ * Merr të gjithë attachments e një task-u
+ */
+app.get('/attachments/task/:taskId', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM attachments WHERE task_id = $1 ORDER BY created_at ASC',
+            [req.params.taskId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /attachments/comment/:commentId
+ * Merr të gjithë attachments e një komenti
+ */
+app.get('/attachments/comment/:commentId', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM attachments WHERE comment_id = $1 ORDER BY created_at ASC',
+            [req.params.commentId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * DELETE /attachments/:id
+ * Fshi attachment (vetëm pronari)
+ */
+app.delete('/attachments/:id', authenticateToken, async (req, res) => {
+    try {
+        // Gjej attachment
+        const result = await pool.query(
+            'SELECT * FROM attachments WHERE id = $1',
+            [req.params.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Attachment not found' });
+        }
+
+        const attachment = result.rows[0];
+
+        // Verifiko pronarin
+        if (attachment.user_email !== req.user.email) {
+            return res.status(403).json({ error: 'Not authorized to delete this attachment' });
+        }
+
+        // Fshi nga Cloudinary
+        try {
+            await cloudinary.uploader.destroy(attachment.cloudinary_public_id, {
+                resource_type: attachment.resource_type || 'image'
+            });
+        } catch (cloudErr) {
+            console.error('Cloudinary delete error:', cloudErr);
+            // Vazhdojmë edhe nëse Cloudinary dështon (mund të jetë fshirë tashmë)
+        }
+
+        // Fshi nga database
+        await pool.query('DELETE FROM attachments WHERE id = $1', [req.params.id]);
+
+        console.log(`🗑️  Attachment deleted: ${attachment.file_name} by ${req.user.email}`);
+
+        res.json({ success: true, message: 'Attachment deleted' });
+
+    } catch (err) {
+        console.error('Delete error:', err);
         res.status(500).json({ error: err.message });
     }
 });
