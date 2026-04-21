@@ -463,10 +463,7 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
             const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(ext);
             const resourceType = isImage ? 'image' : 'raw';
             // Fix PDF URL - shto fl_attachment që të downloadet në vend të hapjes
-            let fileUrl = req.file.path;
-            if (!isImage) {
-                fileUrl = fileUrl.replace('/upload/', '/upload/fl_attachment/');
-            }
+            const fileUrl = req.file.path;
 
             const result = await pool.query(
                 `INSERT INTO attachments 
