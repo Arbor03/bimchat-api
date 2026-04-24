@@ -89,6 +89,7 @@ async function initDB() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        try { await pool.query(`ALTER TABLE revit_files ADD CONSTRAINT revit_files_guid_unique UNIQUE (revit_project_guid)`); } catch {}
 
         // Add role column if it doesn't exist (for existing databases)
         try { await pool.query(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'BIM Specialist'`); } catch {}
@@ -702,7 +703,6 @@ app.post('/projects/:id/link-file', authenticateToken, async (req, res) => {
         const { file_name, file_path, revit_project_guid } = req.body;
         if (!file_name) return res.status(400).json({ error: 'file_name is required' });
 
-        // Check user is member
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
@@ -710,13 +710,16 @@ app.post('/projects/:id/link-file', authenticateToken, async (req, res) => {
         if (memberCheck.rows.length === 0)
             return res.status(403).json({ error: 'You are not a member of this project' });
 
-        await pool.query(
+        const result = await pool.query(
             `INSERT INTO revit_files (project_id, file_name, file_path, revit_project_guid, linked_by)
-             VALUES ($1, $2, $3, $4, $5)`,
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (revit_project_guid) 
+             DO UPDATE SET project_id = $1, file_path = $3, linked_by = $5
+             RETURNING id`,
             [req.params.id, file_name, file_path || null, revit_project_guid || null, req.user.email]
         );
 
-        res.json({ success: true });
+        res.json({ success: true, file_id: result.rows[0].id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -726,7 +729,7 @@ app.post('/projects/:id/link-file', authenticateToken, async (req, res) => {
 app.get('/projects/by-file/:guid', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT p.*, rf.file_name
+            `SELECT p.*, rf.id as file_id, rf.file_name
              FROM revit_files rf
              JOIN projects p ON p.id = rf.project_id
              WHERE rf.revit_project_guid = $1
