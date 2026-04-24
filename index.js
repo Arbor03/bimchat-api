@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 require('dotenv').config();
+const nodemailer = require('nodemailer');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -65,6 +66,24 @@ const upload = multer({
         fileSize: 10 * 1024 * 1024 // 10 MB
     }
 });
+
+// Email transporter for password reset
+const emailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+ 
+// Verify email config on startup
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    emailTransporter.verify()
+        .then(() => console.log('✅ Email service ready:', process.env.EMAIL_USER))
+        .catch(err => console.error('⚠️  Email config error:', err.message));
+} else {
+    console.warn('⚠️  EMAIL_USER or EMAIL_PASS not configured - password reset emails disabled');
+}
 
 async function initDB() {
     try {
@@ -293,53 +312,86 @@ app.get('/auth/verify', authenticateToken, async (req, res) => {
 
 /**
  * POST /auth/forgot-password
- * Generate a password reset token and log it
- * In production, this would send an email with the reset link
+ * Generate a password reset token and send email
  */
 app.post('/auth/forgot-password', async (req, res) => {
     try {
         const { email } = req.body;
-
+ 
         if (!email) {
             return res.status(400).json({ error: 'Email is required' });
         }
-
+ 
         // Check if user exists
         const userResult = await pool.query(
-            'SELECT id, email FROM users WHERE email = $1',
+            'SELECT id, email, full_name FROM users WHERE email = $1',
             [email.toLowerCase()]
         );
-
+ 
         if (userResult.rows.length === 0) {
             // Don't reveal if email exists or not (security)
             return res.json({ success: true, message: 'If this email is registered, a reset link has been sent.' });
         }
-
+ 
+        const user = userResult.rows[0];
+ 
         // Generate reset token
         const resetToken = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
+ 
         // Invalidate previous tokens for this email
         await pool.query(
             'UPDATE password_resets SET used = TRUE WHERE email = $1 AND used = FALSE',
             [email.toLowerCase()]
         );
-
+ 
         // Save reset token
         await pool.query(
             'INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)',
             [email.toLowerCase(), resetToken, expiresAt]
         );
-
-        // Log the reset token (in production, send via email service like SendGrid/Nodemailer)
-        console.log(`🔑 Password reset requested for ${email}`);
-        console.log(`   Reset token: ${resetToken}`);
-        console.log(`   Expires at: ${expiresAt.toISOString()}`);
-        console.log(`   Reset URL: ${process.env.FRONTEND_URL || 'https://your-app.com'}/reset-password?token=${resetToken}`);
-
-        // TODO: Send email with reset link
-        // await sendResetEmail(email, resetToken);
-
+ 
+        // Generate a simple 6-digit code from the token (easier for users)
+        const resetCode = parseInt(resetToken.substring(0, 6), 16).toString().substring(0, 6).padStart(6, '0');
+ 
+        // Send email
+        const mailOptions = {
+            from: `"BIM Chat" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: '🔑 BIM Chat - Password Reset',
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+                    <div style="background: #2B579A; padding: 20px; border-radius: 8px 8px 0 0;">
+                        <h1 style="color: white; margin: 0; font-size: 20px;">🏗️ BIM Chat</h1>
+                        <p style="color: #B4C7E7; margin: 5px 0 0 0; font-size: 13px;">Password Reset Request</p>
+                    </div>
+                    <div style="background: #ffffff; padding: 24px; border: 1px solid #E5E7EB; border-top: none; border-radius: 0 0 8px 8px;">
+                        <p style="color: #374151; font-size: 14px;">Hi <strong>${user.full_name || 'there'}</strong>,</p>
+                        <p style="color: #374151; font-size: 14px;">We received a request to reset your password. Use the code below:</p>
+                        
+                        <div style="background: #F3F4F6; border: 2px dashed #2B579A; border-radius: 8px; padding: 16px; text-align: center; margin: 20px 0;">
+                            <p style="color: #6B7280; font-size: 12px; margin: 0 0 8px 0;">Your reset code:</p>
+                            <p style="color: #2B579A; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 0;">${resetCode}</p>
+                        </div>
+                        
+                        <p style="color: #6B7280; font-size: 12px;">This code expires in <strong>1 hour</strong>.</p>
+                        <p style="color: #6B7280; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
+                        
+                        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+                        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">BIM Chat - BIM Collaboration Platform</p>
+                    </div>
+                </div>
+            `
+        };
+ 
+        try {
+            await emailTransporter.sendMail(mailOptions);
+            console.log(`✅ Reset email sent to ${email} (code: ${resetCode})`);
+        } catch (emailErr) {
+            console.error(`⚠️  Failed to send reset email to ${email}:`, emailErr.message);
+            // Still return success - token is saved, user can check logs or retry
+        }
+ 
         res.json({
             success: true,
             message: 'If this email is registered, a reset link has been sent.'
