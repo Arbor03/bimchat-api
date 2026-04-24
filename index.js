@@ -306,6 +306,66 @@ app.get('/auth/verify', authenticateToken, async (req, res) => {
  * POST /auth/forgot-password
  * Generate a password reset token and send email
  */
+app.post('/auth/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ error: 'Email is required' });
+        }
+
+        const userResult = await pool.query(
+            'SELECT * FROM users WHERE email = $1',
+            [email.toLowerCase()]
+        );
+
+        if (userResult.rows.length === 0) {
+            // Security: don't reveal if email exists
+            return res.json({ success: true, message: 'If the email exists, a reset code was sent' });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const code = parseInt(token.substring(0, 6), 16).toString().substring(0, 6).padStart(6, '0');
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        await pool.query(
+            `INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)`,
+            [email.toLowerCase(), token, expiresAt]
+        );
+
+        if (process.env.RESEND_API_KEY) {
+            try {
+                await resend.emails.send({
+                    from: 'BIM Chat <onboarding@resend.dev>',
+                    to: email,
+                    subject: 'BIM Chat - Password Reset Code',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
+                            <h2 style="color: #2B579A;">Password Reset Request</h2>
+                            <p>Your password reset code is:</p>
+                            <div style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #2B579A; background: #f0f4ff; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
+                                ${code}
+                            </div>
+                            <p>This code expires in 1 hour.</p>
+                            <p style="color: #888; font-size: 12px;">If you didn't request this, ignore this email.</p>
+                        </div>
+                    `
+                });
+                console.log(`✅ Reset code sent to ${email}`);
+            } catch (emailErr) {
+                console.error('Email send error:', emailErr);
+                return res.status(500).json({ error: 'Failed to send email' });
+            }
+        } else {
+            console.log(`⚠️ Reset code for ${email}: ${code} (email not configured)`);
+        }
+
+        res.json({ success: true, message: 'Reset code sent to your email' });
+    } catch (err) {
+        console.error('Forgot password error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 app.post('/auth/reset-password', async (req, res) => {
     try {
         const { token, new_password } = req.body;
