@@ -76,13 +76,6 @@ if (process.env.RESEND_API_KEY) {
 }
  
 // Verify email config on startup
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    emailTransporter.verify()
-        .then(() => console.log('✅ Email service ready:', process.env.EMAIL_USER))
-        .catch(err => console.error('⚠️  Email config error:', err.message));
-} else {
-    console.warn('⚠️  EMAIL_USER or EMAIL_PASS not configured - password reset emails disabled');
-}
 
 async function initDB() {
     try {
