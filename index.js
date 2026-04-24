@@ -112,6 +112,39 @@ async function initDB() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
+        // Add new columns to projects if they don't exist
+        try { await pool.query(`ALTER TABLE projects ADD COLUMN description TEXT`); } catch {}
+        try { await pool.query(`ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'Active'`); } catch {}
+        try { await pool.query(`ALTER TABLE projects ADD COLUMN deadline TIMESTAMP`); } catch {}
+
+        // Project members (user in project with role)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS project_members (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                user_email TEXT NOT NULL,
+                role TEXT DEFAULT 'Specialist',
+                added_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(project_id, user_email)
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_members_project ON project_members(project_id)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_members_email ON project_members(user_email)`); } catch {}
+
+        // Revit files linked to projects
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS revit_files (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                file_name TEXT NOT NULL,
+                file_path TEXT,
+                revit_project_guid TEXT,
+                linked_by TEXT,
+                linked_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_project ON revit_files(project_id)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_guid ON revit_files(revit_project_guid)`); } catch {}
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tasks (
@@ -436,6 +469,284 @@ app.post('/auth/reset-password', async (req, res) => {
 });
 
 // ==================== TASK ROUTES ====================
+// ==================== PROJECT ROUTES ====================
+
+// Get all projects for current user (projects where they are a member OR they created it)
+app.get('/projects', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT DISTINCT p.*, 
+                   u.email as creator_email,
+                   u.full_name as creator_name,
+                   pm.role as my_role,
+                   (SELECT COUNT(*) FROM project_members WHERE project_id = p.id) as member_count,
+                   (SELECT COUNT(*) FROM tasks WHERE project_name = p.name) as task_count
+            FROM projects p
+            LEFT JOIN users u ON p.created_by = u.id
+            LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_email = $1
+            WHERE pm.user_email = $1 OR u.email = $1
+            ORDER BY p.created_at DESC
+        `, [req.user.email]);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get single project with members
+app.get('/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        const projectResult = await pool.query(
+            `SELECT p.*, u.email as creator_email, u.full_name as creator_name
+             FROM projects p
+             LEFT JOIN users u ON p.created_by = u.id
+             WHERE p.id = $1`,
+            [req.params.id]
+        );
+
+        if (projectResult.rows.length === 0)
+            return res.status(404).json({ error: 'Project not found' });
+
+        const membersResult = await pool.query(
+            `SELECT pm.*, u.full_name
+             FROM project_members pm
+             LEFT JOIN users u ON u.email = pm.user_email
+             WHERE pm.project_id = $1
+             ORDER BY pm.added_at ASC`,
+            [req.params.id]
+        );
+
+        const filesResult = await pool.query(
+            `SELECT * FROM revit_files WHERE project_id = $1 ORDER BY linked_at DESC`,
+            [req.params.id]
+        );
+
+        res.json({
+            ...projectResult.rows[0],
+            members: membersResult.rows,
+            files: filesResult.rows
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Create new project
+app.post('/projects', authenticateToken, async (req, res) => {
+    try {
+        const { name, description, deadline } = req.body;
+        if (!name) return res.status(400).json({ error: 'Project name is required' });
+
+        // Get user id
+        const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [req.user.email]);
+        if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        const userId = userResult.rows[0].id;
+
+        // Create project
+        const projectResult = await pool.query(
+            `INSERT INTO projects (name, description, deadline, created_by)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [name, description || null, deadline || null, userId]
+        );
+
+        const project = projectResult.rows[0];
+
+        // Auto-add creator as BIM Manager
+        await pool.query(
+            `INSERT INTO project_members (project_id, user_email, role)
+             VALUES ($1, $2, $3)`,
+            [project.id, req.user.email, 'BIM Manager']
+        );
+
+        res.json(project);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update project
+app.put('/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        const { name, description, deadline, status } = req.body;
+
+        // Check permission: only BIM Manager can update
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can update project' });
+
+        await pool.query(
+            `UPDATE projects SET name = COALESCE($1, name), 
+                description = COALESCE($2, description),
+                deadline = COALESCE($3, deadline),
+                status = COALESCE($4, status)
+             WHERE id = $5`,
+            [name, description, deadline, status, req.params.id]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete project
+app.delete('/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        // Check permission
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can delete project' });
+
+        await pool.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==================== PROJECT MEMBERS ====================
+
+// Add member to project
+app.post('/projects/:id/members', authenticateToken, async (req, res) => {
+    try {
+        const { user_email, role } = req.body;
+        if (!user_email) return res.status(400).json({ error: 'user_email is required' });
+
+        // Check permission: only BIM Manager can add members
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can add members' });
+
+        // Verify user exists
+        const userCheck = await pool.query('SELECT id FROM users WHERE email = $1', [user_email.toLowerCase()]);
+        if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        await pool.query(
+            `INSERT INTO project_members (project_id, user_email, role)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (project_id, user_email) DO UPDATE SET role = $3`,
+            [req.params.id, user_email.toLowerCase(), role || 'BIM Specialist']
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Remove member from project
+app.delete('/projects/:id/members/:email', authenticateToken, async (req, res) => {
+    try {
+        // Check permission
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can remove members' });
+
+        await pool.query(
+            `DELETE FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.params.email.toLowerCase()]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update member role
+app.put('/projects/:id/members/:email', authenticateToken, async (req, res) => {
+    try {
+        const { role } = req.body;
+
+        // Check permission
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can change roles' });
+
+        await pool.query(
+            `UPDATE project_members SET role = $1 WHERE project_id = $2 AND user_email = $3`,
+            [role, req.params.id, req.params.email.toLowerCase()]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==================== REVIT FILES ====================
+
+// Link a Revit file to a project
+app.post('/projects/:id/link-file', authenticateToken, async (req, res) => {
+    try {
+        const { file_name, file_path, revit_project_guid } = req.body;
+        if (!file_name) return res.status(400).json({ error: 'file_name is required' });
+
+        // Check user is member
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0)
+            return res.status(403).json({ error: 'You are not a member of this project' });
+
+        await pool.query(
+            `INSERT INTO revit_files (project_id, file_name, file_path, revit_project_guid, linked_by)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [req.params.id, file_name, file_path || null, revit_project_guid || null, req.user.email]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Find project by Revit file GUID (used when opening a file in Revit)
+app.get('/projects/by-file/:guid', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT p.*, rf.file_name
+             FROM revit_files rf
+             JOIN projects p ON p.id = rf.project_id
+             WHERE rf.revit_project_guid = $1
+             LIMIT 1`,
+            [req.params.guid]
+        );
+
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'No project linked to this file' });
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Unlink file from project
+app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM revit_files WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
     try {
