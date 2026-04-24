@@ -3,6 +3,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 require('dotenv').config();
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
@@ -73,6 +74,21 @@ async function initDB() {
                 email TEXT UNIQUE NOT NULL,
                 full_name TEXT,
                 password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'BIM Specialist',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Add role column if it doesn't exist (for existing databases)
+        try { await pool.query(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'BIM Specialist'`); } catch {}
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS password_resets (
+                id SERIAL PRIMARY KEY,
+                email TEXT NOT NULL,
+                token TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                used BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
@@ -183,13 +199,14 @@ function authenticateToken(req, res, next) {
 
 app.post('/auth/register', async (req, res) => {
     try {
-        const { email, full_name, password } = req.body;
+        const { email, full_name, password, role } = req.body;
         const fullName = full_name;
+        const userRole = role || 'BIM Specialist';
         const passwordHash = await bcrypt.hash(password, 10);
 
         const result = await pool.query(
-            'INSERT INTO users (email, full_name, password_hash) VALUES ($1, $2, $3) RETURNING id, email, full_name',
-            [email.toLowerCase(), fullName, passwordHash]
+            'INSERT INTO users (email, full_name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, email, full_name, role',
+            [email.toLowerCase(), fullName, passwordHash, userRole]
         );
 
         const token = jwt.sign(
@@ -198,7 +215,12 @@ app.post('/auth/register', async (req, res) => {
             { expiresIn: '30d' }
         );
 
-        res.json({ token, email: result.rows[0].email, fullName: result.rows[0].full_name });
+        res.json({
+            token,
+            email: result.rows[0].email,
+            fullName: result.rows[0].full_name,
+            role: result.rows[0].role
+        });
     } catch (err) {
         if (err.code === '23505') {
             res.status(400).json({ error: 'Email already exists' });
@@ -232,9 +254,154 @@ app.post('/auth/login', async (req, res) => {
             { expiresIn: '30d' }
         );
 
-        res.json({ token, email: user.email, fullName: user.full_name });
+        res.json({
+            token,
+            email: user.email,
+            fullName: user.full_name,
+            role: user.role || 'BIM Specialist'
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /auth/verify
+ * Verify if a token is valid and return user info
+ */
+app.get('/auth/verify', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT id, email, full_name, role FROM users WHERE email = $1',
+            [req.user.email]
+        );
+
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'User not found' });
+
+        const user = result.rows[0];
+        res.json({
+            valid: true,
+            email: user.email,
+            fullName: user.full_name,
+            role: user.role || 'BIM Specialist'
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /auth/forgot-password
+ * Generate a password reset token and log it
+ * In production, this would send an email with the reset link
+ */
+app.post('/auth/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ error: 'Email is required' });
+        }
+
+        // Check if user exists
+        const userResult = await pool.query(
+            'SELECT id, email FROM users WHERE email = $1',
+            [email.toLowerCase()]
+        );
+
+        if (userResult.rows.length === 0) {
+            // Don't reveal if email exists or not (security)
+            return res.json({ success: true, message: 'If this email is registered, a reset link has been sent.' });
+        }
+
+        // Generate reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        // Invalidate previous tokens for this email
+        await pool.query(
+            'UPDATE password_resets SET used = TRUE WHERE email = $1 AND used = FALSE',
+            [email.toLowerCase()]
+        );
+
+        // Save reset token
+        await pool.query(
+            'INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)',
+            [email.toLowerCase(), resetToken, expiresAt]
+        );
+
+        // Log the reset token (in production, send via email service like SendGrid/Nodemailer)
+        console.log(`🔑 Password reset requested for ${email}`);
+        console.log(`   Reset token: ${resetToken}`);
+        console.log(`   Expires at: ${expiresAt.toISOString()}`);
+        console.log(`   Reset URL: ${process.env.FRONTEND_URL || 'https://your-app.com'}/reset-password?token=${resetToken}`);
+
+        // TODO: Send email with reset link
+        // await sendResetEmail(email, resetToken);
+
+        res.json({
+            success: true,
+            message: 'If this email is registered, a reset link has been sent.'
+        });
+    } catch (err) {
+        console.error('Forgot password error:', err);
+        res.status(500).json({ error: 'Failed to process request' });
+    }
+});
+
+/**
+ * POST /auth/reset-password
+ * Reset password using the token from the email
+ */
+app.post('/auth/reset-password', async (req, res) => {
+    try {
+        const { token, new_password } = req.body;
+
+        if (!token || !new_password) {
+            return res.status(400).json({ error: 'Token and new password are required' });
+        }
+
+        if (new_password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+
+        // Find valid reset token
+        const resetResult = await pool.query(
+            `SELECT * FROM password_resets 
+             WHERE token = $1 AND used = FALSE AND expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
+            [token]
+        );
+
+        if (resetResult.rows.length === 0) {
+            return res.status(400).json({ error: 'Invalid or expired reset token' });
+        }
+
+        const resetRecord = resetResult.rows[0];
+        const email = resetRecord.email;
+
+        // Hash new password
+        const passwordHash = await bcrypt.hash(new_password, 10);
+
+        // Update password
+        await pool.query(
+            'UPDATE users SET password_hash = $1 WHERE email = $2',
+            [passwordHash, email]
+        );
+
+        // Mark token as used
+        await pool.query(
+            'UPDATE password_resets SET used = TRUE WHERE id = $1',
+            [resetRecord.id]
+        );
+
+        console.log(`✅ Password reset successful for ${email}`);
+
+        res.json({ success: true, message: 'Password reset successfully' });
+    } catch (err) {
+        console.error('Reset password error:', err);
+        res.status(500).json({ error: 'Failed to reset password' });
     }
 });
 
@@ -265,7 +432,7 @@ app.post('/tasks', authenticateToken, async (req, res) => {
         await pool.query(
             `INSERT INTO notifications (id, type, message, created_by, task_id, project_name)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [require('crypto').randomUUID(), 'NewTask', `${created_by} created new task: '${description}'`, created_by, id, project_name]
+            [crypto.randomUUID(), 'NewTask', `${created_by} created new task: '${description}'`, created_by, id, project_name]
         );
 
         res.json({ success: true, id });
@@ -324,7 +491,7 @@ app.post('/comments', authenticateToken, async (req, res) => {
         await pool.query(
             `INSERT INTO notifications (id, type, message, created_by, task_id, project_name)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [require('crypto').randomUUID(), 'NewComment', `${author} commented: '${text}'`, author, task_id, project_name]
+            [crypto.randomUUID(), 'NewComment', `${author} commented: '${text}'`, author, task_id, project_name]
         );
 
         res.json({ success: true });
@@ -411,7 +578,7 @@ app.post('/messages', authenticateToken, async (req, res) => {
 app.get('/users/:projectName', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT email, full_name FROM users ORDER BY full_name ASC`
+            `SELECT email, full_name, role FROM users ORDER BY full_name ASC`
         );
         res.json(result.rows);
     } catch (err) {
@@ -421,19 +588,8 @@ app.get('/users/:projectName', authenticateToken, async (req, res) => {
 
 // ==================== ATTACHMENT ROUTES ====================
 
-/**
- * POST /attachments/upload
- * Upload një skedar në Cloudinary dhe ruaj në database
- * 
- * Body (multipart/form-data):
- *   - file: skedari (max 10 MB)
- *   - message_id (optional): ID i mesazhit
- *   - task_id (optional): ID i task-ut  
- *   - comment_id (optional): ID i komentit
- */
 app.post('/attachments/upload', authenticateToken, (req, res) => {
     upload.single('file')(req, res, async (err) => {
-        // Handle multer errors
         if (err) {
             if (err.code === 'LIMIT_FILE_SIZE') {
                 return res.status(400).json({ error: 'File too large. Maximum size is 10 MB.' });
@@ -449,20 +605,17 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
             const { message_id, task_id, comment_id } = req.body;
             const userEmail = req.user.email;
 
-            // Validim: vetëm një parent ose asnjë
             const parentCount = [message_id, task_id, comment_id].filter(Boolean).length;
             if (parentCount > 1) {
-                // Cleanup: fshi nga Cloudinary
                 const resourceType = req.file.mimetype.startsWith('image/') ? 'image' : 'raw';
                 await cloudinary.uploader.destroy(req.file.filename, { resource_type: resourceType });
                 return res.status(400).json({ error: 'Attachment can belong to only one entity' });
             }
 
-            const attachmentId = require('crypto').randomUUID();
+            const attachmentId = crypto.randomUUID();
             const ext = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
             const isImage = ['.jpg', '.jpeg', '.png', '.gif'].includes(ext);
             const resourceType = isImage ? 'image' : 'raw';
-            // Fix PDF URL - shto fl_attachment që të downloadet në vend të hapjes
             const fileUrl = req.file.path;
 
             const result = await pool.query(
@@ -474,11 +627,11 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
                 [
                     attachmentId,
                     userEmail,
-                    fileUrl,                    // Cloudinary URL
+                    fileUrl,
                     req.file.originalname,
                     req.file.mimetype,
                     req.file.size,
-                    req.file.filename,          // Cloudinary public_id
+                    req.file.filename,
                     resourceType,
                     message_id || null,
                     task_id || null,
@@ -496,7 +649,6 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
         } catch (error) {
             console.error('Upload error:', error);
             
-            // Cleanup nëse database fail
             if (req.file && req.file.filename) {
                 try {
                     const resourceType = req.file.mimetype.startsWith('image/') ? 'image' : 'raw';
@@ -511,10 +663,6 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
     });
 });
 
-/**
- * GET /attachments/:id
- * Merr info për një attachment
- */
 app.get('/attachments/:id', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -532,10 +680,6 @@ app.get('/attachments/:id', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * GET /attachments/message/:messageId
- * Merr të gjithë attachments e një mesazhi
- */
 app.get('/attachments/message/:messageId', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -548,10 +692,6 @@ app.get('/attachments/message/:messageId', authenticateToken, async (req, res) =
     }
 });
 
-/**
- * GET /attachments/task/:taskId
- * Merr të gjithë attachments e një task-u
- */
 app.get('/attachments/task/:taskId', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -564,10 +704,6 @@ app.get('/attachments/task/:taskId', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * GET /attachments/comment/:commentId
- * Merr të gjithë attachments e një komenti
- */
 app.get('/attachments/comment/:commentId', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -580,13 +716,8 @@ app.get('/attachments/comment/:commentId', authenticateToken, async (req, res) =
     }
 });
 
-/**
- * DELETE /attachments/:id
- * Fshi attachment (vetëm pronari)
- */
 app.delete('/attachments/:id', authenticateToken, async (req, res) => {
     try {
-        // Gjej attachment
         const result = await pool.query(
             'SELECT * FROM attachments WHERE id = $1',
             [req.params.id]
@@ -598,22 +729,18 @@ app.delete('/attachments/:id', authenticateToken, async (req, res) => {
 
         const attachment = result.rows[0];
 
-        // Verifiko pronarin
         if (attachment.user_email !== req.user.email) {
             return res.status(403).json({ error: 'Not authorized to delete this attachment' });
         }
 
-        // Fshi nga Cloudinary
         try {
             await cloudinary.uploader.destroy(attachment.cloudinary_public_id, {
                 resource_type: attachment.resource_type || 'image'
             });
         } catch (cloudErr) {
             console.error('Cloudinary delete error:', cloudErr);
-            // Vazhdojmë edhe nëse Cloudinary dështon (mund të jetë fshirë tashmë)
         }
 
-        // Fshi nga database
         await pool.query('DELETE FROM attachments WHERE id = $1', [req.params.id]);
 
         console.log(`🗑️  Attachment deleted: ${attachment.file_name} by ${req.user.email}`);
