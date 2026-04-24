@@ -200,6 +200,11 @@ async function initDB() {
 
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_id INTEGER DEFAULT -1`); } catch {}
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_name TEXT`); } catch {}
+        // Add file_id for two-level communication
+        try { await pool.query(`ALTER TABLE tasks ADD COLUMN file_id INTEGER REFERENCES revit_files(id) ON DELETE SET NULL`); } catch {}
+        try { await pool.query(`ALTER TABLE messages ADD COLUMN file_id INTEGER REFERENCES revit_files(id) ON DELETE SET NULL`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_tasks_file ON tasks(file_id)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id)`); } catch {}
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS attachments (
@@ -750,10 +755,21 @@ app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
 
 app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
-            'SELECT * FROM tasks WHERE project_name = $1 ORDER BY created_at ASC',
-            [req.params.projectName]
-        );
+        const fileId = req.query.fileId; // undefined = all, 'project' = only project-level, number = specific file
+        let query, params;
+
+        if (fileId === 'project') {
+            query = 'SELECT * FROM tasks WHERE project_name = $1 AND file_id IS NULL ORDER BY created_at ASC';
+            params = [req.params.projectName];
+        } else if (fileId) {
+            query = 'SELECT * FROM tasks WHERE project_name = $1 AND file_id = $2 ORDER BY created_at ASC';
+            params = [req.params.projectName, parseInt(fileId)];
+        } else {
+            query = 'SELECT * FROM tasks WHERE project_name = $1 ORDER BY created_at ASC';
+            params = [req.params.projectName];
+        }
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -762,12 +778,12 @@ app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
 
 app.post('/tasks', authenticateToken, async (req, res) => {
     try {
-        const { id, project_name, description, assignee, created_by, element_id, element_name, view_name, status } = req.body;
+        const { id, project_name, description, assignee, created_by, element_id, element_name, view_name, status, file_id } = req.body;
 
         await pool.query(
-            `INSERT INTO tasks (id, project_name, description, assignee, created_by, element_id, element_name, view_name, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [id, project_name, description, assignee, created_by, element_id || -1, element_name || '', view_name || '', status || 'Open']
+            `INSERT INTO tasks (id, project_name, description, assignee, created_by, element_id, element_name, view_name, status, file_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [id, project_name, description, assignee, created_by, element_id || -1, element_name || '', view_name || '', status || 'Open', file_id || null]
         );
 
         await pool.query(
@@ -873,12 +889,27 @@ app.put('/notifications/read/:projectName', authenticateToken, async (req, res) 
 
 app.get('/messages/group/:projectName', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT * FROM messages 
-             WHERE project_name = $1 AND receiver IS NULL 
-             ORDER BY created_at ASC LIMIT 100`,
-            [req.params.projectName]
-        );
+        const fileId = req.query.fileId;
+        let query, params;
+
+        if (fileId === 'project') {
+            query = `SELECT * FROM messages 
+                     WHERE project_name = $1 AND receiver IS NULL AND file_id IS NULL
+                     ORDER BY created_at ASC LIMIT 100`;
+            params = [req.params.projectName];
+        } else if (fileId) {
+            query = `SELECT * FROM messages 
+                     WHERE project_name = $1 AND receiver IS NULL AND file_id = $2
+                     ORDER BY created_at ASC LIMIT 100`;
+            params = [req.params.projectName, parseInt(fileId)];
+        } else {
+            query = `SELECT * FROM messages 
+                     WHERE project_name = $1 AND receiver IS NULL 
+                     ORDER BY created_at ASC LIMIT 100`;
+            params = [req.params.projectName];
+        }
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -887,15 +918,25 @@ app.get('/messages/group/:projectName', authenticateToken, async (req, res) => {
 
 app.get('/messages/private/:projectName/:otherUser', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT * FROM messages 
+        const fileId = req.query.fileId;
+        let fileFilter = '';
+        let params = [req.params.projectName, req.user.email, req.params.otherUser];
+
+        if (fileId === 'project') {
+            fileFilter = 'AND file_id IS NULL';
+        } else if (fileId) {
+            fileFilter = 'AND file_id = $4';
+            params.push(parseInt(fileId));
+        }
+
+        const query = `SELECT * FROM messages 
              WHERE project_name = $1 AND (
                 (sender = $2 AND receiver = $3) OR 
                 (sender = $3 AND receiver = $2)
-             )
-             ORDER BY created_at ASC LIMIT 100`,
-            [req.params.projectName, req.user.email, req.params.otherUser]
-        );
+             ) ${fileFilter}
+             ORDER BY created_at ASC LIMIT 100`;
+
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -904,11 +945,11 @@ app.get('/messages/private/:projectName/:otherUser', authenticateToken, async (r
 
 app.post('/messages', authenticateToken, async (req, res) => {
     try {
-        const { id, project_name, message, receiver, element_id, element_name } = req.body;
+        const { id, project_name, message, receiver, element_id, element_name, file_id } = req.body;
         await pool.query(
-            `INSERT INTO messages (id, project_name, sender, receiver, message, element_id, element_name)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [id, project_name, req.user.email, receiver || null, message, element_id || -1, element_name || null]
+            `INSERT INTO messages (id, project_name, sender, receiver, message, element_id, element_name, file_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [id, project_name, req.user.email, receiver || null, message, element_id || -1, element_name || null, file_id || null]
         );
         res.json({ success: true });
     } catch (err) {
