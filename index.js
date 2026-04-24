@@ -306,134 +306,68 @@ app.get('/auth/verify', authenticateToken, async (req, res) => {
  * POST /auth/forgot-password
  * Generate a password reset token and send email
  */
-app.post('/auth/forgot-password', async (req, res) => {
-    try {
-        const { email } = req.body;
- 
-        if (!email) {
-            return res.status(400).json({ error: 'Email is required' });
-        }
- 
-        const userResult = await pool.query(
-            'SELECT id, email, full_name FROM users WHERE email = $1',
-            [email.toLowerCase()]
-        );
- 
-        if (userResult.rows.length === 0) {
-            return res.json({ success: true, message: 'If this email is registered, a reset link has been sent.' });
-        }
- 
-        const user = userResult.rows[0];
- 
-        const resetToken = crypto.randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
- 
-        await pool.query(
-            'UPDATE password_resets SET used = TRUE WHERE email = $1 AND used = FALSE',
-            [email.toLowerCase()]
-        );
- 
-        await pool.query(
-            'INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)',
-            [email.toLowerCase(), resetToken, expiresAt]
-        );
- 
-        const resetCode = parseInt(resetToken.substring(0, 6), 16).toString().substring(0, 6).padStart(6, '0');
- 
-        const emailHtml = `
-            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
-                <div style="background: #2B579A; padding: 20px; border-radius: 8px 8px 0 0;">
-                    <h1 style="color: white; margin: 0; font-size: 20px;">🏗️ BIM Chat</h1>
-                    <p style="color: #B4C7E7; margin: 5px 0 0 0; font-size: 13px;">Password Reset Request</p>
-                </div>
-                <div style="background: #ffffff; padding: 24px; border: 1px solid #E5E7EB; border-top: none; border-radius: 0 0 8px 8px;">
-                    <p style="color: #374151; font-size: 14px;">Hi <strong>${user.full_name || 'there'}</strong>,</p>
-                    <p style="color: #374151; font-size: 14px;">We received a request to reset your password. Use the code below:</p>
-                    
-                    <div style="background: #F3F4F6; border: 2px dashed #2B579A; border-radius: 8px; padding: 16px; text-align: center; margin: 20px 0;">
-                        <p style="color: #6B7280; font-size: 12px; margin: 0 0 8px 0;">Your reset code:</p>
-                        <p style="color: #2B579A; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 0;">${resetCode}</p>
-                    </div>
-                    
-                    <p style="color: #6B7280; font-size: 12px;">This code expires in <strong>1 hour</strong>.</p>
-                    <p style="color: #6B7280; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
-                    
-                    <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
-                    <p style="color: #9CA3AF; font-size: 11px; text-align: center;">BIM Chat - BIM Collaboration Platform</p>
-                </div>
-            </div>
-        `;
- 
-        try {
-            await resend.emails.send({
-                from: 'BIM Chat <onboarding@resend.dev>',
-                to: email,
-                subject: 'BIM Chat - Password Reset Code',
-                html: emailHtml
-            });
-            console.log(`✅ Reset email sent to ${email} (code: ${resetCode})`);
-        } catch (emailErr) {
-            console.error(`⚠️  Failed to send reset email to ${email}:`, emailErr.message || JSON.stringify(emailErr));
-        }
- 
-        res.json({
-            success: true,
-            message: 'If this email is registered, a reset link has been sent.'
-        });
-    } catch (err) {
-        console.error('Forgot password error:', err);
-        res.status(500).json({ error: 'Failed to process request' });
-    }
-});
-
-/**
- * POST /auth/reset-password
- * Reset password using the token from the email
- */
 app.post('/auth/reset-password', async (req, res) => {
     try {
         const { token, new_password } = req.body;
-
+ 
         if (!token || !new_password) {
-            return res.status(400).json({ error: 'Token and new password are required' });
+            return res.status(400).json({ error: 'Code and new password are required' });
         }
-
+ 
         if (new_password.length < 6) {
             return res.status(400).json({ error: 'Password must be at least 6 characters' });
         }
-
-        // Find valid reset token
-        const resetResult = await pool.query(
+ 
+        let resetRecord = null;
+ 
+        // First try: match as full token
+        let resetResult = await pool.query(
             `SELECT * FROM password_resets 
              WHERE token = $1 AND used = FALSE AND expires_at > NOW()
              ORDER BY created_at DESC LIMIT 1`,
             [token]
         );
-
-        if (resetResult.rows.length === 0) {
-            return res.status(400).json({ error: 'Invalid or expired reset token' });
+ 
+        if (resetResult.rows.length > 0) {
+            resetRecord = resetResult.rows[0];
+        } else {
+            // Second try: match as 6-digit code
+            // Find all unused, non-expired tokens and check their codes
+            const allTokens = await pool.query(
+                `SELECT * FROM password_resets 
+                 WHERE used = FALSE AND expires_at > NOW()
+                 ORDER BY created_at DESC`
+            );
+ 
+            for (const row of allTokens.rows) {
+                const code = parseInt(row.token.substring(0, 6), 16).toString().substring(0, 6).padStart(6, '0');
+                if (code === token) {
+                    resetRecord = row;
+                    break;
+                }
+            }
         }
-
-        const resetRecord = resetResult.rows[0];
+ 
+        if (!resetRecord) {
+            return res.status(400).json({ error: 'Invalid or expired reset code' });
+        }
+ 
         const email = resetRecord.email;
-
-        // Hash new password
+ 
         const passwordHash = await bcrypt.hash(new_password, 10);
-
-        // Update password
+ 
         await pool.query(
             'UPDATE users SET password_hash = $1 WHERE email = $2',
             [passwordHash, email]
         );
-
-        // Mark token as used
+ 
         await pool.query(
             'UPDATE password_resets SET used = TRUE WHERE id = $1',
             [resetRecord.id]
         );
-
+ 
         console.log(`✅ Password reset successful for ${email}`);
-
+ 
         res.json({ success: true, message: 'Password reset successfully' });
     } catch (err) {
         console.error('Reset password error:', err);
