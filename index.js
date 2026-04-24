@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 require('dotenv').config();
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -68,19 +68,12 @@ const upload = multer({
 });
 
 // Email transporter for password reset
-const emailTransporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    family: 4,
-    tls: {
-        rejectUnauthorized: false
-    },
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
+if (process.env.RESEND_API_KEY) {
+    console.log('✅ Resend email service configured');
+} else {
+    console.warn('⚠️  RESEND_API_KEY not configured - password reset emails disabled');
+}
  
 // Verify email config on startup
 if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
@@ -328,74 +321,66 @@ app.post('/auth/forgot-password', async (req, res) => {
             return res.status(400).json({ error: 'Email is required' });
         }
  
-        // Check if user exists
         const userResult = await pool.query(
             'SELECT id, email, full_name FROM users WHERE email = $1',
             [email.toLowerCase()]
         );
  
         if (userResult.rows.length === 0) {
-            // Don't reveal if email exists or not (security)
             return res.json({ success: true, message: 'If this email is registered, a reset link has been sent.' });
         }
  
         const user = userResult.rows[0];
  
-        // Generate reset token
         const resetToken = crypto.randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
  
-        // Invalidate previous tokens for this email
         await pool.query(
             'UPDATE password_resets SET used = TRUE WHERE email = $1 AND used = FALSE',
             [email.toLowerCase()]
         );
  
-        // Save reset token
         await pool.query(
             'INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)',
             [email.toLowerCase(), resetToken, expiresAt]
         );
  
-        // Generate a simple 6-digit code from the token (easier for users)
         const resetCode = parseInt(resetToken.substring(0, 6), 16).toString().substring(0, 6).padStart(6, '0');
  
-        // Send email
-        const mailOptions = {
-            from: `"BIM Chat" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: '🔑 BIM Chat - Password Reset',
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
-                    <div style="background: #2B579A; padding: 20px; border-radius: 8px 8px 0 0;">
-                        <h1 style="color: white; margin: 0; font-size: 20px;">🏗️ BIM Chat</h1>
-                        <p style="color: #B4C7E7; margin: 5px 0 0 0; font-size: 13px;">Password Reset Request</p>
-                    </div>
-                    <div style="background: #ffffff; padding: 24px; border: 1px solid #E5E7EB; border-top: none; border-radius: 0 0 8px 8px;">
-                        <p style="color: #374151; font-size: 14px;">Hi <strong>${user.full_name || 'there'}</strong>,</p>
-                        <p style="color: #374151; font-size: 14px;">We received a request to reset your password. Use the code below:</p>
-                        
-                        <div style="background: #F3F4F6; border: 2px dashed #2B579A; border-radius: 8px; padding: 16px; text-align: center; margin: 20px 0;">
-                            <p style="color: #6B7280; font-size: 12px; margin: 0 0 8px 0;">Your reset code:</p>
-                            <p style="color: #2B579A; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 0;">${resetCode}</p>
-                        </div>
-                        
-                        <p style="color: #6B7280; font-size: 12px;">This code expires in <strong>1 hour</strong>.</p>
-                        <p style="color: #6B7280; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
-                        
-                        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
-                        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">BIM Chat - BIM Collaboration Platform</p>
-                    </div>
+        const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+                <div style="background: #2B579A; padding: 20px; border-radius: 8px 8px 0 0;">
+                    <h1 style="color: white; margin: 0; font-size: 20px;">🏗️ BIM Chat</h1>
+                    <p style="color: #B4C7E7; margin: 5px 0 0 0; font-size: 13px;">Password Reset Request</p>
                 </div>
-            `
-        };
+                <div style="background: #ffffff; padding: 24px; border: 1px solid #E5E7EB; border-top: none; border-radius: 0 0 8px 8px;">
+                    <p style="color: #374151; font-size: 14px;">Hi <strong>${user.full_name || 'there'}</strong>,</p>
+                    <p style="color: #374151; font-size: 14px;">We received a request to reset your password. Use the code below:</p>
+                    
+                    <div style="background: #F3F4F6; border: 2px dashed #2B579A; border-radius: 8px; padding: 16px; text-align: center; margin: 20px 0;">
+                        <p style="color: #6B7280; font-size: 12px; margin: 0 0 8px 0;">Your reset code:</p>
+                        <p style="color: #2B579A; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 0;">${resetCode}</p>
+                    </div>
+                    
+                    <p style="color: #6B7280; font-size: 12px;">This code expires in <strong>1 hour</strong>.</p>
+                    <p style="color: #6B7280; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
+                    
+                    <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+                    <p style="color: #9CA3AF; font-size: 11px; text-align: center;">BIM Chat - BIM Collaboration Platform</p>
+                </div>
+            </div>
+        `;
  
         try {
-            await emailTransporter.sendMail(mailOptions);
+            await resend.emails.send({
+                from: 'BIM Chat <onboarding@resend.dev>',
+                to: email,
+                subject: 'BIM Chat - Password Reset Code',
+                html: emailHtml
+            });
             console.log(`✅ Reset email sent to ${email} (code: ${resetCode})`);
         } catch (emailErr) {
-            console.error(`⚠️  Failed to send reset email to ${email}:`, emailErr.message);
-            // Still return success - token is saved, user can check logs or retry
+            console.error(`⚠️  Failed to send reset email to ${email}:`, emailErr.message || JSON.stringify(emailErr));
         }
  
         res.json({
