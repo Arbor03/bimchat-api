@@ -9,10 +9,12 @@ const { Resend } = require('resend');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -32,6 +34,23 @@ if (!process.env.CLOUDINARY_CLOUD_NAME) {
     console.error('⚠️  CLOUDINARY credentials not configured!');
 } else {
     console.log('✅ Cloudinary configured:', process.env.CLOUDINARY_CLOUD_NAME);
+}
+
+// ==================== BACKBLAZE B2 CONFIG ====================
+
+let b2Client = null;
+if (process.env.B2_KEY_ID && process.env.B2_APPLICATION_KEY && process.env.B2_ENDPOINT) {
+    b2Client = new S3Client({
+        endpoint: 'https://' + process.env.B2_ENDPOINT,
+        region: process.env.B2_ENDPOINT.split('.')[1] || 'us-east-1',
+        credentials: {
+            accessKeyId: process.env.B2_KEY_ID,
+            secretAccessKey: process.env.B2_APPLICATION_KEY
+        }
+    });
+    console.log('✅ Backblaze B2 configured:', process.env.B2_BUCKET_NAME);
+} else {
+    console.warn('⚠️  Backblaze B2 not configured - cloud file storage disabled');
 }
 
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.dwg', '.rvt'];
@@ -74,8 +93,6 @@ if (process.env.RESEND_API_KEY) {
 } else {
     console.warn('⚠️  RESEND_API_KEY not configured - password reset emails disabled');
 }
- 
-// Verify email config on startup
 
 async function initDB() {
     try {
@@ -91,7 +108,6 @@ async function initDB() {
         `);
         try { await pool.query(`ALTER TABLE revit_files ADD CONSTRAINT revit_files_guid_unique UNIQUE (revit_project_guid)`); } catch {}
 
-        // Add role column if it doesn't exist (for existing databases)
         try { await pool.query(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'BIM Specialist'`); } catch {}
 
         await pool.query(`
@@ -113,12 +129,10 @@ async function initDB() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        // Add new columns to projects if they don't exist
         try { await pool.query(`ALTER TABLE projects ADD COLUMN description TEXT`); } catch {}
         try { await pool.query(`ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'Active'`); } catch {}
         try { await pool.query(`ALTER TABLE projects ADD COLUMN deadline TIMESTAMP`); } catch {}
 
-        // Project members (user in project with role)
         await pool.query(`
             CREATE TABLE IF NOT EXISTS project_members (
                 id SERIAL PRIMARY KEY,
@@ -132,7 +146,6 @@ async function initDB() {
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_members_project ON project_members(project_id)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_members_email ON project_members(user_email)`); } catch {}
 
-        // Revit files linked to projects
         await pool.query(`
             CREATE TABLE IF NOT EXISTS revit_files (
                 id SERIAL PRIMARY KEY,
@@ -146,6 +159,56 @@ async function initDB() {
         `);
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_project ON revit_files(project_id)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_guid ON revit_files(revit_project_guid)`); } catch {}
+
+        // ==================== BIMCHAT DRIVE TABLES ====================
+        
+        // Cloud files - actual .rvt files stored in B2
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS cloud_files (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                file_name TEXT NOT NULL,
+                relative_path TEXT NOT NULL,
+                b2_key TEXT NOT NULL UNIQUE,
+                file_size BIGINT,
+                current_version INTEGER DEFAULT 1,
+                uploaded_by TEXT,
+                uploaded_at TIMESTAMP DEFAULT NOW(),
+                last_modified TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_cloud_files_project ON cloud_files(project_id)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_cloud_files_path ON cloud_files(relative_path)`); } catch {}
+
+        // File versions - history of each version
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS file_versions (
+                id SERIAL PRIMARY KEY,
+                cloud_file_id INTEGER REFERENCES cloud_files(id) ON DELETE CASCADE,
+                version INTEGER NOT NULL,
+                b2_key TEXT NOT NULL,
+                file_size BIGINT,
+                uploaded_by TEXT,
+                uploaded_at TIMESTAMP DEFAULT NOW(),
+                comment TEXT
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_file_versions_file ON file_versions(cloud_file_id)`); } catch {}
+
+        // File locks - who has the file open
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS file_locks (
+                id SERIAL PRIMARY KEY,
+                cloud_file_id INTEGER REFERENCES cloud_files(id) ON DELETE CASCADE UNIQUE,
+                locked_by TEXT NOT NULL,
+                locked_by_name TEXT,
+                machine_name TEXT,
+                locked_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP,
+                heartbeat_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_file_locks_user ON file_locks(locked_by)`); } catch {}
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS tasks (
@@ -201,7 +264,6 @@ async function initDB() {
 
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_id INTEGER DEFAULT -1`); } catch {}
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_name TEXT`); } catch {}
-        // Add file_id for two-level communication
         try { await pool.query(`ALTER TABLE tasks ADD COLUMN file_id INTEGER REFERENCES revit_files(id) ON DELETE SET NULL`); } catch {}
         try { await pool.query(`ALTER TABLE messages ADD COLUMN file_id INTEGER REFERENCES revit_files(id) ON DELETE SET NULL`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_tasks_file ON tasks(file_id)`); } catch {}
@@ -315,10 +377,6 @@ app.post('/auth/login', async (req, res) => {
     }
 });
 
-/**
- * GET /auth/verify
- * Verify if a token is valid and return user info
- */
 app.get('/auth/verify', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -341,10 +399,6 @@ app.get('/auth/verify', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * POST /auth/forgot-password
- * Generate a password reset token and send email
- */
 app.post('/auth/forgot-password', async (req, res) => {
     try {
         const { email } = req.body;
@@ -359,13 +413,12 @@ app.post('/auth/forgot-password', async (req, res) => {
         );
 
         if (userResult.rows.length === 0) {
-            // Security: don't reveal if email exists
             return res.json({ success: true, message: 'If the email exists, a reset code was sent' });
         }
 
         const token = crypto.randomBytes(32).toString('hex');
         const code = parseInt(token.substring(0, 6), 16).toString().substring(0, 6).padStart(6, '0');
-        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
         await pool.query(
             `INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)`,
@@ -405,6 +458,7 @@ app.post('/auth/forgot-password', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
 app.post('/auth/reset-password', async (req, res) => {
     try {
         const { token, new_password } = req.body;
@@ -419,7 +473,6 @@ app.post('/auth/reset-password', async (req, res) => {
  
         let resetRecord = null;
  
-        // First try: match as full token
         let resetResult = await pool.query(
             `SELECT * FROM password_resets 
              WHERE token = $1 AND used = FALSE AND expires_at > NOW()
@@ -430,8 +483,6 @@ app.post('/auth/reset-password', async (req, res) => {
         if (resetResult.rows.length > 0) {
             resetRecord = resetResult.rows[0];
         } else {
-            // Second try: match as 6-digit code
-            // Find all unused, non-expired tokens and check their codes
             const allTokens = await pool.query(
                 `SELECT * FROM password_resets 
                  WHERE used = FALSE AND expires_at > NOW()
@@ -452,7 +503,6 @@ app.post('/auth/reset-password', async (req, res) => {
         }
  
         const email = resetRecord.email;
- 
         const passwordHash = await bcrypt.hash(new_password, 10);
  
         await pool.query(
@@ -474,10 +524,410 @@ app.post('/auth/reset-password', async (req, res) => {
     }
 });
 
-// ==================== TASK ROUTES ====================
+// ==================== BIMCHAT DRIVE ROUTES ====================
+
+/**
+ * GET /drive/test
+ * Test endpoint - verify B2 connection
+ */
+app.get('/drive/test', authenticateToken, async (req, res) => {
+    if (!b2Client) {
+        return res.status(503).json({ 
+            success: false, 
+            error: 'B2 not configured. Check B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME, B2_ENDPOINT env vars.' 
+        });
+    }
+    res.json({ 
+        success: true, 
+        message: 'BIMChat Drive is ready',
+        bucket: process.env.B2_BUCKET_NAME,
+        endpoint: process.env.B2_ENDPOINT
+    });
+});
+
+/**
+ * GET /drive/files/:projectId
+ * List all cloud files for a project
+ */
+app.get('/drive/files/:projectId', authenticateToken, async (req, res) => {
+    try {
+        // Verify membership
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.projectId, req.user.email]
+        );
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Not a member of this project' });
+        }
+
+        const result = await pool.query(
+            `SELECT cf.*, fl.locked_by, fl.locked_by_name, fl.locked_at
+             FROM cloud_files cf
+             LEFT JOIN file_locks fl ON fl.cloud_file_id = cf.id
+             WHERE cf.project_id = $1
+             ORDER BY cf.relative_path ASC`,
+            [req.params.projectId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('List files error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /drive/files/upload-url
+ * Get a presigned URL to upload a file directly to B2
+ * Body: { projectId, relativePath, fileName, fileSize }
+ */
+app.post('/drive/files/upload-url', authenticateToken, async (req, res) => {
+    try {
+        if (!b2Client) return res.status(503).json({ error: 'B2 not configured' });
+
+        const { projectId, relativePath, fileName, fileSize } = req.body;
+        if (!projectId || !relativePath || !fileName) {
+            return res.status(400).json({ error: 'projectId, relativePath, and fileName are required' });
+        }
+
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [projectId, req.user.email]
+        );
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Not a member of this project' });
+        }
+
+        // Generate B2 key: project-{id}/path/to/file.rvt
+        const b2Key = `project-${projectId}/${relativePath.replace(/^\/+/, '')}`;
+
+        const command = new PutObjectCommand({
+            Bucket: process.env.B2_BUCKET_NAME,
+            Key: b2Key,
+            ContentType: 'application/octet-stream'
+        });
+
+        const uploadUrl = await getSignedUrl(b2Client, command, { expiresIn: 3600 }); // 1 hour
+
+        res.json({
+            success: true,
+            uploadUrl,
+            b2Key,
+            expiresIn: 3600
+        });
+    } catch (err) {
+        console.error('Upload URL error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /drive/files/confirm-upload
+ * Confirm that a file was uploaded to B2 and register it in DB
+ * Body: { projectId, relativePath, fileName, b2Key, fileSize, comment? }
+ */
+app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
+    try {
+        const { projectId, relativePath, fileName, b2Key, fileSize, comment } = req.body;
+        if (!projectId || !relativePath || !fileName || !b2Key) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        // Check if file already exists (new version)
+        const existing = await pool.query(
+            `SELECT * FROM cloud_files WHERE project_id = $1 AND relative_path = $2`,
+            [projectId, relativePath]
+        );
+
+        if (existing.rows.length > 0) {
+            // New version of existing file
+            const cloudFile = existing.rows[0];
+            const newVersion = cloudFile.current_version + 1;
+
+            // Save old version to history
+            await pool.query(
+                `INSERT INTO file_versions (cloud_file_id, version, b2_key, file_size, uploaded_by, comment)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [cloudFile.id, cloudFile.current_version, cloudFile.b2_key, cloudFile.file_size, cloudFile.uploaded_by, null]
+            );
+
+            // Update current file
+            await pool.query(
+                `UPDATE cloud_files SET b2_key = $1, file_size = $2, current_version = $3, 
+                 uploaded_by = $4, last_modified = NOW()
+                 WHERE id = $5`,
+                [b2Key, fileSize, newVersion, req.user.email, cloudFile.id]
+            );
+
+            res.json({ 
+                success: true, 
+                fileId: cloudFile.id, 
+                version: newVersion,
+                message: `Version ${newVersion} uploaded`
+            });
+        } else {
+            // First upload of this file
+            const result = await pool.query(
+                `INSERT INTO cloud_files (project_id, file_name, relative_path, b2_key, file_size, uploaded_by)
+                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+                [projectId, fileName, relativePath, b2Key, fileSize, req.user.email]
+            );
+
+            res.json({ 
+                success: true, 
+                fileId: result.rows[0].id, 
+                version: 1,
+                message: 'File uploaded'
+            });
+        }
+    } catch (err) {
+        console.error('Confirm upload error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /drive/files/:fileId/download-url
+ * Get a presigned URL to download a file from B2
+ */
+app.get('/drive/files/:fileId/download-url', authenticateToken, async (req, res) => {
+    try {
+        if (!b2Client) return res.status(503).json({ error: 'B2 not configured' });
+
+        const fileResult = await pool.query(
+            `SELECT cf.*, p.id as project_id FROM cloud_files cf
+             JOIN projects p ON p.id = cf.project_id
+             WHERE cf.id = $1`,
+            [req.params.fileId]
+        );
+
+        if (fileResult.rows.length === 0) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        const file = fileResult.rows[0];
+
+        // Verify membership
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [file.project_id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Not a member of this project' });
+        }
+
+        const command = new GetObjectCommand({
+            Bucket: process.env.B2_BUCKET_NAME,
+            Key: file.b2_key
+        });
+
+        const downloadUrl = await getSignedUrl(b2Client, command, { expiresIn: 3600 });
+
+        res.json({
+            success: true,
+            downloadUrl,
+            fileName: file.file_name,
+            fileSize: file.file_size,
+            version: file.current_version
+        });
+    } catch (err) {
+        console.error('Download URL error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /drive/files/:fileId/lock
+ * Lock a file (user is going to edit it)
+ * Body: { machineName? }
+ */
+app.post('/drive/files/:fileId/lock', authenticateToken, async (req, res) => {
+    try {
+        const { machineName } = req.body;
+
+        // Get user info
+        const userResult = await pool.query('SELECT full_name FROM users WHERE email = $1', [req.user.email]);
+        const fullName = userResult.rows[0]?.full_name || req.user.email;
+
+        // Lock expires in 30 minutes (renewed by heartbeat)
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+        // Try to insert lock, but fail if someone else has it
+        const result = await pool.query(
+            `INSERT INTO file_locks (cloud_file_id, locked_by, locked_by_name, machine_name, expires_at)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (cloud_file_id) DO UPDATE SET
+                heartbeat_at = NOW(),
+                expires_at = $5
+                WHERE file_locks.locked_by = $2
+             RETURNING *`,
+            [req.params.fileId, req.user.email, fullName, machineName || null, expiresAt]
+        );
+
+        if (result.rows.length === 0) {
+            // Someone else has the lock
+            const existingLock = await pool.query(
+                `SELECT * FROM file_locks WHERE cloud_file_id = $1`,
+                [req.params.fileId]
+            );
+            return res.status(409).json({ 
+                error: 'File is locked by another user',
+                lockedBy: existingLock.rows[0]?.locked_by,
+                lockedByName: existingLock.rows[0]?.locked_by_name,
+                lockedAt: existingLock.rows[0]?.locked_at
+            });
+        }
+
+        console.log(`🔒 File ${req.params.fileId} locked by ${req.user.email}`);
+        res.json({ success: true, lock: result.rows[0] });
+    } catch (err) {
+        console.error('Lock error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /drive/files/:fileId/unlock
+ * Release lock on a file
+ */
+app.post('/drive/files/:fileId/unlock', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `DELETE FROM file_locks WHERE cloud_file_id = $1 AND locked_by = $2 RETURNING *`,
+            [req.params.fileId, req.user.email]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'No lock found for this user' });
+        }
+
+        console.log(`🔓 File ${req.params.fileId} unlocked by ${req.user.email}`);
+        res.json({ success: true, message: 'File unlocked' });
+    } catch (err) {
+        console.error('Unlock error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /drive/files/:fileId/heartbeat
+ * Keep lock alive while user is working (call every 5-10 min)
+ */
+app.post('/drive/files/:fileId/heartbeat', authenticateToken, async (req, res) => {
+    try {
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+        const result = await pool.query(
+            `UPDATE file_locks SET heartbeat_at = NOW(), expires_at = $1
+             WHERE cloud_file_id = $2 AND locked_by = $3
+             RETURNING *`,
+            [expiresAt, req.params.fileId, req.user.email]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'No active lock' });
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /drive/files/:fileId/lock-status
+ * Check who has the lock
+ */
+app.get('/drive/files/:fileId/lock-status', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM file_locks WHERE cloud_file_id = $1`,
+            [req.params.fileId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.json({ locked: false });
+        }
+
+        const lock = result.rows[0];
+        const isMe = lock.locked_by === req.user.email;
+
+        res.json({
+            locked: true,
+            lockedBy: lock.locked_by,
+            lockedByName: lock.locked_by_name,
+            lockedAt: lock.locked_at,
+            isMe
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /drive/files/:fileId/versions
+ * Get version history of a file
+ */
+app.get('/drive/files/:fileId/versions', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM file_versions WHERE cloud_file_id = $1 ORDER BY version DESC`,
+            [req.params.fileId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * DELETE /drive/files/:fileId
+ * Delete a file (only by project manager)
+ */
+app.delete('/drive/files/:fileId', authenticateToken, async (req, res) => {
+    try {
+        const fileResult = await pool.query(
+            `SELECT cf.*, p.id as project_id FROM cloud_files cf
+             JOIN projects p ON p.id = cf.project_id WHERE cf.id = $1`,
+            [req.params.fileId]
+        );
+
+        if (fileResult.rows.length === 0) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        const file = fileResult.rows[0];
+
+        // Verify BIM Manager permission
+        const memberCheck = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [file.project_id, req.user.email]
+        );
+        if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager') {
+            return res.status(403).json({ error: 'Only BIM Manager can delete files' });
+        }
+
+        // Delete from B2
+        if (b2Client) {
+            try {
+                await b2Client.send(new DeleteObjectCommand({
+                    Bucket: process.env.B2_BUCKET_NAME,
+                    Key: file.b2_key
+                }));
+            } catch (b2Err) {
+                console.error('B2 delete error:', b2Err);
+            }
+        }
+
+        // Delete from DB (cascades to versions and locks)
+        await pool.query('DELETE FROM cloud_files WHERE id = $1', [req.params.fileId]);
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ==================== PROJECT ROUTES ====================
 
-// Get all projects for current user (projects where they are a member OR they created it)
 app.get('/projects', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -499,7 +949,6 @@ app.get('/projects', authenticateToken, async (req, res) => {
     }
 });
 
-// Get single project with members
 app.get('/projects/:id', authenticateToken, async (req, res) => {
     try {
         const projectResult = await pool.query(
@@ -537,18 +986,15 @@ app.get('/projects/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Create new project
 app.post('/projects', authenticateToken, async (req, res) => {
     try {
         const { name, description, deadline } = req.body;
         if (!name) return res.status(400).json({ error: 'Project name is required' });
 
-        // Get user id
         const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [req.user.email]);
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         const userId = userResult.rows[0].id;
 
-        // Create project
         const projectResult = await pool.query(
             `INSERT INTO projects (name, description, deadline, created_by)
              VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -557,7 +1003,6 @@ app.post('/projects', authenticateToken, async (req, res) => {
 
         const project = projectResult.rows[0];
 
-        // Auto-add creator as BIM Manager
         await pool.query(
             `INSERT INTO project_members (project_id, user_email, role)
              VALUES ($1, $2, $3)`,
@@ -570,12 +1015,10 @@ app.post('/projects', authenticateToken, async (req, res) => {
     }
 });
 
-// Update project
 app.put('/projects/:id', authenticateToken, async (req, res) => {
     try {
         const { name, description, deadline, status } = req.body;
 
-        // Check permission: only BIM Manager can update
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
@@ -598,10 +1041,8 @@ app.put('/projects/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Delete project
 app.delete('/projects/:id', authenticateToken, async (req, res) => {
     try {
-        // Check permission
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
@@ -618,13 +1059,11 @@ app.delete('/projects/:id', authenticateToken, async (req, res) => {
 
 // ==================== PROJECT MEMBERS ====================
 
-// Add member to project
 app.post('/projects/:id/members', authenticateToken, async (req, res) => {
     try {
         const { user_email, role } = req.body;
         if (!user_email) return res.status(400).json({ error: 'user_email is required' });
 
-        // Check permission: only BIM Manager can add members
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
@@ -632,7 +1071,6 @@ app.post('/projects/:id/members', authenticateToken, async (req, res) => {
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager')
             return res.status(403).json({ error: 'Only BIM Manager can add members' });
 
-        // Verify user exists
         const userCheck = await pool.query('SELECT id FROM users WHERE email = $1', [user_email.toLowerCase()]);
         if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
 
@@ -649,10 +1087,8 @@ app.post('/projects/:id/members', authenticateToken, async (req, res) => {
     }
 });
 
-// Remove member from project
 app.delete('/projects/:id/members/:email', authenticateToken, async (req, res) => {
     try {
-        // Check permission
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
@@ -671,12 +1107,10 @@ app.delete('/projects/:id/members/:email', authenticateToken, async (req, res) =
     }
 });
 
-// Update member role
 app.put('/projects/:id/members/:email', authenticateToken, async (req, res) => {
     try {
         const { role } = req.body;
 
-        // Check permission
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
@@ -697,7 +1131,6 @@ app.put('/projects/:id/members/:email', authenticateToken, async (req, res) => {
 
 // ==================== REVIT FILES ====================
 
-// Link a Revit file to a project
 app.post('/projects/:id/link-file', authenticateToken, async (req, res) => {
     try {
         const { file_name, file_path, revit_project_guid } = req.body;
@@ -725,7 +1158,6 @@ app.post('/projects/:id/link-file', authenticateToken, async (req, res) => {
     }
 });
 
-// Find project by Revit file GUID (used when opening a file in Revit)
 app.get('/projects/by-file/:guid', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -746,7 +1178,6 @@ app.get('/projects/by-file/:guid', authenticateToken, async (req, res) => {
     }
 });
 
-// Unlink file from project
 app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
     try {
         await pool.query('DELETE FROM revit_files WHERE id = $1', [req.params.id]);
@@ -756,9 +1187,11 @@ app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// ==================== TASK ROUTES ====================
+
 app.get('/tasks/:projectName', authenticateToken, async (req, res) => {
     try {
-        const fileId = req.query.fileId; // undefined = all, 'project' = only project-level, number = specific file
+        const fileId = req.query.fileId;
         let query, params;
 
         if (fileId === 'project') {
@@ -1010,30 +1443,17 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                  RETURNING *`,
                 [
-                    attachmentId,
-                    userEmail,
-                    fileUrl,
-                    req.file.originalname,
-                    req.file.mimetype,
-                    req.file.size,
-                    req.file.filename,
-                    resourceType,
-                    message_id || null,
-                    task_id || null,
-                    comment_id || null
+                    attachmentId, userEmail, fileUrl, req.file.originalname,
+                    req.file.mimetype, req.file.size, req.file.filename, resourceType,
+                    message_id || null, task_id || null, comment_id || null
                 ]
             );
 
             console.log(`✅ Attachment uploaded: ${req.file.originalname} by ${userEmail}`);
-
-            res.status(201).json({
-                success: true,
-                attachment: result.rows[0]
-            });
+            res.status(201).json({ success: true, attachment: result.rows[0] });
 
         } catch (error) {
             console.error('Upload error:', error);
-            
             if (req.file && req.file.filename) {
                 try {
                     const resourceType = req.file.mimetype.startsWith('image/') ? 'image' : 'raw';
@@ -1042,7 +1462,6 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
                     console.error('Cleanup error:', cleanupErr);
                 }
             }
-            
             res.status(500).json({ error: error.message });
         }
     });
@@ -1050,15 +1469,8 @@ app.post('/attachments/upload', authenticateToken, (req, res) => {
 
 app.get('/attachments/:id', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
-            'SELECT * FROM attachments WHERE id = $1',
-            [req.params.id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Attachment not found' });
-        }
-
+        const result = await pool.query('SELECT * FROM attachments WHERE id = $1', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Attachment not found' });
         res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1103,17 +1515,10 @@ app.get('/attachments/comment/:commentId', authenticateToken, async (req, res) =
 
 app.delete('/attachments/:id', authenticateToken, async (req, res) => {
     try {
-        const result = await pool.query(
-            'SELECT * FROM attachments WHERE id = $1',
-            [req.params.id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Attachment not found' });
-        }
+        const result = await pool.query('SELECT * FROM attachments WHERE id = $1', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Attachment not found' });
 
         const attachment = result.rows[0];
-
         if (attachment.user_email !== req.user.email) {
             return res.status(403).json({ error: 'Not authorized to delete this attachment' });
         }
@@ -1127,11 +1532,8 @@ app.delete('/attachments/:id', authenticateToken, async (req, res) => {
         }
 
         await pool.query('DELETE FROM attachments WHERE id = $1', [req.params.id]);
-
         console.log(`🗑️  Attachment deleted: ${attachment.file_name} by ${req.user.email}`);
-
         res.json({ success: true, message: 'Attachment deleted' });
-
     } catch (err) {
         console.error('Delete error:', err);
         res.status(500).json({ error: err.message });
