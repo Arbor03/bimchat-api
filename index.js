@@ -568,7 +568,26 @@ app.get('/drive/files/:projectId', authenticateToken, async (req, res) => {
              ORDER BY cf.relative_path ASC`,
             [req.params.projectId]
         );
-        res.json(result.rows);
+
+        const files = result.rows;
+
+        // Attach a presigned download URL to each file. getSignedUrl signs locally
+        // (no Backblaze API call, no Class B transaction), so doing it in a loop is cheap.
+        if (b2Client) {
+            await Promise.all(files.map(async (f) => {
+                try {
+                    const command = new GetObjectCommand({
+                        Bucket: process.env.B2_BUCKET_NAME,
+                        Key: f.b2_key
+                    });
+                    f.download_url = await getSignedUrl(b2Client, command, { expiresIn: 3600 });
+                } catch (e) {
+                    f.download_url = null;
+                }
+            }));
+        }
+
+        res.json(files);
     } catch (err) {
         console.error('List files error:', err);
         res.status(500).json({ error: err.message });
