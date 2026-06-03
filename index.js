@@ -42,7 +42,7 @@ let b2Client = null;
 if (process.env.B2_KEY_ID && process.env.B2_APPLICATION_KEY && process.env.B2_ENDPOINT) {
     b2Client = new S3Client({
         endpoint: 'https://' + process.env.B2_ENDPOINT,
-        region: process.env.B2_ENDPOINT.split('.')[1] || 'us-east-1',
+        region: 'auto',
         credentials: {
             accessKeyId: process.env.B2_KEY_ID,
             secretAccessKey: process.env.B2_APPLICATION_KEY
