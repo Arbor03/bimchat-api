@@ -107,6 +107,7 @@ async function initDB() {
             )
         `);
         try { await pool.query(`ALTER TABLE revit_files ADD CONSTRAINT revit_files_guid_unique UNIQUE (revit_project_guid)`); } catch {}
+        
 
         try { await pool.query(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'BIM Specialist'`); } catch {}
 
@@ -159,6 +160,23 @@ async function initDB() {
         `);
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_project ON revit_files(project_id)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_guid ON revit_files(revit_project_guid)`); } catch {}
+        // Web viewer: tabela lidhese ElementId <-> IfcGuid per cdo file
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS element_mapping (
+                id SERIAL PRIMARY KEY,
+                file_id INTEGER REFERENCES revit_files(id) ON DELETE CASCADE,
+                element_id BIGINT,
+                ifc_guid TEXT,
+                element_name TEXT
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_elmap_file_guid ON element_mapping(file_id, ifc_guid)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_elmap_file_elid ON element_mapping(file_id, element_id)`); } catch {}
+ 
+        // Web viewer: kolona te revit_files per IFC-ne e ngarkuar (+ frag per me vone)
+        try { await pool.query(`ALTER TABLE revit_files ADD COLUMN ifc_r2_key TEXT`); } catch {}
+        try { await pool.query(`ALTER TABLE revit_files ADD COLUMN ifc_uploaded_at TIMESTAMP`); } catch {}
+        try { await pool.query(`ALTER TABLE revit_files ADD COLUMN frag_r2_key TEXT`); } catch {}
 
         // ==================== BIMCHAT DRIVE TABLES ====================
         
@@ -1202,6 +1220,51 @@ app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
         await pool.query('DELETE FROM revit_files WHERE id = $1', [req.params.id]);
         res.json({ success: true });
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Konfirmon ngarkimin: ruan ifc_r2_key te revit_files DHE zevendeson tabelen element_mapping.
+// Body: { r2Key, mapping: [ { elementId, ifcGuid, name }, ... ] }
+app.post('/web-export/:fileId/confirm', authenticateToken, async (req, res) => {
+    try {
+        const fileId = parseInt(req.params.fileId);
+        const { r2Key, mapping } = req.body;
+ 
+        const fr = await pool.query(`SELECT project_id FROM revit_files WHERE id = $1`, [fileId]);
+        if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+ 
+        const pm = await pool.query(
+            `SELECT 1 FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [fr.rows[0].project_id, req.user.email]
+        );
+        if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
+ 
+        if (r2Key) {
+            await pool.query(
+                `UPDATE revit_files SET ifc_r2_key = $1, ifc_uploaded_at = NOW() WHERE id = $2`,
+                [r2Key, fileId]
+            );
+        }
+ 
+        const map = Array.isArray(mapping) ? mapping : [];
+        await pool.query(`DELETE FROM element_mapping WHERE file_id = $1`, [fileId]);
+ 
+        if (map.length > 0) {
+            const elIds = map.map(m => m.elementId);
+            const guids = map.map(m => m.ifcGuid);
+            const names = map.map(m => m.name || '');
+            // unnest = nje INSERT i vetem per mijera rreshta, pa shperthim parametrash
+            await pool.query(
+                `INSERT INTO element_mapping (file_id, element_id, ifc_guid, element_name)
+                 SELECT $1, * FROM unnest($2::bigint[], $3::text[], $4::text[])`,
+                [fileId, elIds, guids, names]
+            );
+        }
+ 
+        res.json({ success: true, count: map.length });
+    } catch (err) {
+        console.error('web-export confirm error:', err);
         res.status(500).json({ error: err.message });
     }
 });
