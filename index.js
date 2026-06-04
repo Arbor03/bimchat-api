@@ -1223,7 +1223,35 @@ app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+// Jep nje presigned PUT URL per te ngarkuar IFC-ne direkt te R2.
+app.post('/web-export/:fileId/upload-url', authenticateToken, async (req, res) => {
+    try {
+        if (!b2Client) return res.status(503).json({ error: 'Storage not configured' });
+        const fileId = parseInt(req.params.fileId);
 
+        const fr = await pool.query(`SELECT project_id FROM revit_files WHERE id = $1`, [fileId]);
+        if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+
+        const pm = await pool.query(
+            `SELECT 1 FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [fr.rows[0].project_id, req.user.email]
+        );
+        if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
+
+        const r2Key = `web-ifc/file-${fileId}/model.ifc`;
+        const command = new PutObjectCommand({
+            Bucket: process.env.B2_BUCKET_NAME,
+            Key: r2Key,
+            ContentType: 'application/octet-stream'
+        });
+        const uploadUrl = await getSignedUrl(b2Client, command, { expiresIn: 3600 });
+
+        res.json({ success: true, uploadUrl, r2Key });
+    } catch (err) {
+        console.error('web-export upload-url error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 // Konfirmon ngarkimin: ruan ifc_r2_key te revit_files DHE zevendeson tabelen element_mapping.
 // Body: { r2Key, mapping: [ { elementId, ifcGuid, name }, ... ] }
 app.post('/web-export/:fileId/confirm', authenticateToken, async (req, res) => {
