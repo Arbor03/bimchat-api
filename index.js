@@ -11,6 +11,7 @@ const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { Worker } = require('worker_threads');
 
 const app = express();
 app.use(cors());
@@ -107,7 +108,6 @@ async function initDB() {
             )
         `);
         try { await pool.query(`ALTER TABLE revit_files ADD CONSTRAINT revit_files_guid_unique UNIQUE (revit_project_guid)`); } catch {}
-        
 
         try { await pool.query(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'BIM Specialist'`); } catch {}
 
@@ -160,6 +160,7 @@ async function initDB() {
         `);
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_project ON revit_files(project_id)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_guid ON revit_files(revit_project_guid)`); } catch {}
+
         // Web viewer: tabela lidhese ElementId <-> IfcGuid per cdo file
         await pool.query(`
             CREATE TABLE IF NOT EXISTS element_mapping (
@@ -172,11 +173,13 @@ async function initDB() {
         `);
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_elmap_file_guid ON element_mapping(file_id, ifc_guid)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_elmap_file_elid ON element_mapping(file_id, element_id)`); } catch {}
- 
-        // Web viewer: kolona te revit_files per IFC-ne e ngarkuar (+ frag per me vone)
+
+        // Web viewer: kolona te revit_files per IFC + Fragments
         try { await pool.query(`ALTER TABLE revit_files ADD COLUMN ifc_r2_key TEXT`); } catch {}
         try { await pool.query(`ALTER TABLE revit_files ADD COLUMN ifc_uploaded_at TIMESTAMP`); } catch {}
         try { await pool.query(`ALTER TABLE revit_files ADD COLUMN frag_r2_key TEXT`); } catch {}
+        try { await pool.query(`ALTER TABLE revit_files ADD COLUMN frag_status TEXT`); } catch {}
+        try { await pool.query(`ALTER TABLE revit_files ADD COLUMN frag_error TEXT`); } catch {}
 
         // ==================== BIMCHAT DRIVE TABLES ====================
         
@@ -322,6 +325,50 @@ function authenticateToken(req, res, next) {
         if (err) return res.status(403).json({ error: 'Invalid token' });
         req.user = user;
         next();
+    });
+}
+
+// ==================== FRAGMENTS CONVERSION (worker thread) ====================
+
+function startFragConversion(fileId, ifcR2Key) {
+    if (!ifcR2Key) return;
+
+    pool.query(`UPDATE revit_files SET frag_status='pending', frag_error=NULL WHERE id=$1`, [fileId])
+        .catch(e => console.error('frag pending set error:', e.message));
+
+    const worker = new Worker(require('path').join(__dirname, 'fragWorker.js'), {
+        workerData: { fileId, ifcR2Key }
+    });
+
+    worker.on('message', async (msg) => {
+        try {
+            if (msg && msg.ok) {
+                await pool.query(
+                    `UPDATE revit_files SET frag_r2_key=$1, frag_status='ready', frag_error=NULL WHERE id=$2`,
+                    [msg.fragKey, fileId]
+                );
+                console.log(`✅ Fragments ready for file ${fileId}: ${msg.fragKey}`);
+            } else {
+                const err = msg ? msg.error : 'unknown';
+                await pool.query(
+                    `UPDATE revit_files SET frag_status='error', frag_error=$1 WHERE id=$2`,
+                    [err, fileId]
+                );
+                console.error(`❌ Fragments conversion failed for file ${fileId}: ${err}`);
+            }
+        } catch (e) { console.error('frag db update error:', e.message); }
+    });
+
+    worker.on('error', async (err) => {
+        console.error('frag worker error:', err.message);
+        try {
+            await pool.query(`UPDATE revit_files SET frag_status='error', frag_error=$1 WHERE id=$2`,
+                [err.message, fileId]);
+        } catch {}
+    });
+
+    worker.on('exit', (code) => {
+        if (code !== 0) console.error(`frag worker exited code ${code} for file ${fileId}`);
     });
 }
 
@@ -544,10 +591,6 @@ app.post('/auth/reset-password', async (req, res) => {
 
 // ==================== BIMCHAT DRIVE ROUTES ====================
 
-/**
- * GET /drive/test
- * Test endpoint - verify B2 connection
- */
 app.get('/drive/test', authenticateToken, async (req, res) => {
     if (!b2Client) {
         return res.status(503).json({ 
@@ -563,13 +606,8 @@ app.get('/drive/test', authenticateToken, async (req, res) => {
     });
 });
 
-/**
- * GET /drive/files/:projectId
- * List all cloud files for a project
- */
 app.get('/drive/files/:projectId', authenticateToken, async (req, res) => {
     try {
-        // Verify membership
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.projectId, req.user.email]
@@ -589,8 +627,6 @@ app.get('/drive/files/:projectId', authenticateToken, async (req, res) => {
 
         const files = result.rows;
 
-        // Attach a presigned download URL to each file. getSignedUrl signs locally
-        // (no Backblaze API call, no Class B transaction), so doing it in a loop is cheap.
         if (b2Client) {
             await Promise.all(files.map(async (f) => {
                 try {
@@ -612,11 +648,6 @@ app.get('/drive/files/:projectId', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * POST /drive/files/upload-url
- * Get a presigned URL to upload a file directly to B2
- * Body: { projectId, relativePath, fileName, fileSize }
- */
 app.post('/drive/files/upload-url', authenticateToken, async (req, res) => {
     try {
         if (!b2Client) return res.status(503).json({ error: 'B2 not configured' });
@@ -634,7 +665,6 @@ app.post('/drive/files/upload-url', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Not a member of this project' });
         }
 
-        // Generate B2 key: project-{id}/path/to/file.rvt
         const b2Key = `project-${projectId}/${relativePath.replace(/^\/+/, '')}`;
 
         const command = new PutObjectCommand({
@@ -643,7 +673,7 @@ app.post('/drive/files/upload-url', authenticateToken, async (req, res) => {
             ContentType: 'application/octet-stream'
         });
 
-        const uploadUrl = await getSignedUrl(b2Client, command, { expiresIn: 3600 }); // 1 hour
+        const uploadUrl = await getSignedUrl(b2Client, command, { expiresIn: 3600 });
 
         res.json({
             success: true,
@@ -657,11 +687,6 @@ app.post('/drive/files/upload-url', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * POST /drive/files/confirm-upload
- * Confirm that a file was uploaded to B2 and register it in DB
- * Body: { projectId, relativePath, fileName, b2Key, fileSize, comment? }
- */
 app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
     try {
         const { projectId, relativePath, fileName, b2Key, fileSize, comment } = req.body;
@@ -669,25 +694,21 @@ app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // Check if file already exists (new version)
         const existing = await pool.query(
             `SELECT * FROM cloud_files WHERE project_id = $1 AND relative_path = $2`,
             [projectId, relativePath]
         );
 
         if (existing.rows.length > 0) {
-            // New version of existing file
             const cloudFile = existing.rows[0];
             const newVersion = cloudFile.current_version + 1;
 
-            // Save old version to history
             await pool.query(
                 `INSERT INTO file_versions (cloud_file_id, version, b2_key, file_size, uploaded_by, comment)
                  VALUES ($1, $2, $3, $4, $5, $6)`,
                 [cloudFile.id, cloudFile.current_version, cloudFile.b2_key, cloudFile.file_size, cloudFile.uploaded_by, null]
             );
 
-            // Update current file
             await pool.query(
                 `UPDATE cloud_files SET b2_key = $1, file_size = $2, current_version = $3, 
                  uploaded_by = $4, last_modified = NOW()
@@ -702,7 +723,6 @@ app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
                 message: `Version ${newVersion} uploaded`
             });
         } else {
-            // First upload of this file
             const result = await pool.query(
                 `INSERT INTO cloud_files (project_id, file_name, relative_path, b2_key, file_size, uploaded_by)
                  VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -722,10 +742,6 @@ app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * GET /drive/files/:fileId/download-url
- * Get a presigned URL to download a file from B2
- */
 app.get('/drive/files/:fileId/download-url', authenticateToken, async (req, res) => {
     try {
         if (!b2Client) return res.status(503).json({ error: 'B2 not configured' });
@@ -743,7 +759,6 @@ app.get('/drive/files/:fileId/download-url', authenticateToken, async (req, res)
 
         const file = fileResult.rows[0];
 
-        // Verify membership
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [file.project_id, req.user.email]
@@ -772,23 +787,15 @@ app.get('/drive/files/:fileId/download-url', authenticateToken, async (req, res)
     }
 });
 
-/**
- * POST /drive/files/:fileId/lock
- * Lock a file (user is going to edit it)
- * Body: { machineName? }
- */
 app.post('/drive/files/:fileId/lock', authenticateToken, async (req, res) => {
     try {
         const { machineName } = req.body;
 
-        // Get user info
         const userResult = await pool.query('SELECT full_name FROM users WHERE email = $1', [req.user.email]);
         const fullName = userResult.rows[0]?.full_name || req.user.email;
 
-        // Lock expires in 30 minutes (renewed by heartbeat)
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-        // Try to insert lock, but fail if someone else has it
         const result = await pool.query(
             `INSERT INTO file_locks (cloud_file_id, locked_by, locked_by_name, machine_name, expires_at)
              VALUES ($1, $2, $3, $4, $5)
@@ -801,7 +808,6 @@ app.post('/drive/files/:fileId/lock', authenticateToken, async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-            // Someone else has the lock
             const existingLock = await pool.query(
                 `SELECT * FROM file_locks WHERE cloud_file_id = $1`,
                 [req.params.fileId]
@@ -822,10 +828,6 @@ app.post('/drive/files/:fileId/lock', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * POST /drive/files/:fileId/unlock
- * Release lock on a file
- */
 app.post('/drive/files/:fileId/unlock', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -845,10 +847,6 @@ app.post('/drive/files/:fileId/unlock', authenticateToken, async (req, res) => {
     }
 });
 
-/**
- * POST /drive/files/:fileId/heartbeat
- * Keep lock alive while user is working (call every 5-10 min)
- */
 app.post('/drive/files/:fileId/heartbeat', authenticateToken, async (req, res) => {
     try {
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -869,10 +867,6 @@ app.post('/drive/files/:fileId/heartbeat', authenticateToken, async (req, res) =
     }
 });
 
-/**
- * GET /drive/files/:fileId/lock-status
- * Check who has the lock
- */
 app.get('/drive/files/:fileId/lock-status', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -899,10 +893,6 @@ app.get('/drive/files/:fileId/lock-status', authenticateToken, async (req, res) 
     }
 });
 
-/**
- * GET /drive/files/:fileId/versions
- * Get version history of a file
- */
 app.get('/drive/files/:fileId/versions', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
@@ -915,10 +905,6 @@ app.get('/drive/files/:fileId/versions', authenticateToken, async (req, res) => 
     }
 });
 
-/**
- * DELETE /drive/files/:fileId
- * Delete a file (only by project manager)
- */
 app.delete('/drive/files/:fileId', authenticateToken, async (req, res) => {
     try {
         const fileResult = await pool.query(
@@ -933,7 +919,6 @@ app.delete('/drive/files/:fileId', authenticateToken, async (req, res) => {
 
         const file = fileResult.rows[0];
 
-        // Verify BIM Manager permission
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [file.project_id, req.user.email]
@@ -942,7 +927,6 @@ app.delete('/drive/files/:fileId', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Only BIM Manager can delete files' });
         }
 
-        // Delete from B2
         if (b2Client) {
             try {
                 await b2Client.send(new DeleteObjectCommand({
@@ -954,7 +938,6 @@ app.delete('/drive/files/:fileId', authenticateToken, async (req, res) => {
             }
         }
 
-        // Delete from DB (cascades to versions and locks)
         await pool.query('DELETE FROM cloud_files WHERE id = $1', [req.params.fileId]);
 
         res.json({ success: true });
@@ -1223,6 +1206,9 @@ app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ==================== WEB EXPORT (IFC -> R2 + element_mapping + Fragments) ====================
+
 // Jep nje presigned PUT URL per te ngarkuar IFC-ne direkt te R2.
 app.post('/web-export/:fileId/upload-url', authenticateToken, async (req, res) => {
     try {
@@ -1252,47 +1238,99 @@ app.post('/web-export/:fileId/upload-url', authenticateToken, async (req, res) =
         res.status(500).json({ error: err.message });
     }
 });
-// Konfirmon ngarkimin: ruan ifc_r2_key te revit_files DHE zevendeson tabelen element_mapping.
+
+// Konfirmon ngarkimin: ruan ifc_r2_key + zevendeson element_mapping + nis konvertimin Fragments.
 // Body: { r2Key, mapping: [ { elementId, ifcGuid, name }, ... ] }
 app.post('/web-export/:fileId/confirm', authenticateToken, async (req, res) => {
     try {
         const fileId = parseInt(req.params.fileId);
         const { r2Key, mapping } = req.body;
- 
+
         const fr = await pool.query(`SELECT project_id FROM revit_files WHERE id = $1`, [fileId]);
         if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
- 
+
         const pm = await pool.query(
             `SELECT 1 FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [fr.rows[0].project_id, req.user.email]
         );
         if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
- 
+
         if (r2Key) {
             await pool.query(
                 `UPDATE revit_files SET ifc_r2_key = $1, ifc_uploaded_at = NOW() WHERE id = $2`,
                 [r2Key, fileId]
             );
         }
- 
+
         const map = Array.isArray(mapping) ? mapping : [];
         await pool.query(`DELETE FROM element_mapping WHERE file_id = $1`, [fileId]);
- 
+
         if (map.length > 0) {
             const elIds = map.map(m => m.elementId);
             const guids = map.map(m => m.ifcGuid);
             const names = map.map(m => m.name || '');
-            // unnest = nje INSERT i vetem per mijera rreshta, pa shperthim parametrash
             await pool.query(
                 `INSERT INTO element_mapping (file_id, element_id, ifc_guid, element_name)
                  SELECT $1, * FROM unnest($2::bigint[], $3::text[], $4::text[])`,
                 [fileId, elIds, guids, names]
             );
         }
- 
+
+        // Nis konvertimin Fragments ne sfond (fire-and-forget)
+        startFragConversion(fileId, r2Key);
+
         res.json({ success: true, count: map.length });
     } catch (err) {
         console.error('web-export confirm error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Statusi i konvertimit Fragments (viewer-i e kontrollon kete).
+app.get('/web-export/:fileId/status', authenticateToken, async (req, res) => {
+    try {
+        const fr = await pool.query(
+            `SELECT frag_status, frag_r2_key, frag_error, ifc_uploaded_at FROM revit_files WHERE id = $1`,
+            [req.params.fileId]
+        );
+        if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        const r = fr.rows[0];
+        res.json({
+            status: r.frag_status || 'none',   // none | pending | ready | error
+            hasFrag: !!r.frag_r2_key,
+            error: r.frag_error || null,
+            ifcUploadedAt: r.ifc_uploaded_at || null
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Presigned GET URL per .frag (viewer-i e shkarkon nga ketu).
+app.get('/web-export/:fileId/frag-url', authenticateToken, async (req, res) => {
+    try {
+        if (!b2Client) return res.status(503).json({ error: 'Storage not configured' });
+
+        const fr = await pool.query(
+            `SELECT project_id, frag_r2_key FROM revit_files WHERE id = $1`,
+            [req.params.fileId]
+        );
+        if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        if (!fr.rows[0].frag_r2_key) return res.status(409).json({ error: 'Fragments not ready' });
+
+        const pm = await pool.query(
+            `SELECT 1 FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [fr.rows[0].project_id, req.user.email]
+        );
+        if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
+
+        const command = new GetObjectCommand({
+            Bucket: process.env.B2_BUCKET_NAME,
+            Key: fr.rows[0].frag_r2_key
+        });
+        const downloadUrl = await getSignedUrl(b2Client, command, { expiresIn: 3600 });
+        res.json({ success: true, downloadUrl });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
