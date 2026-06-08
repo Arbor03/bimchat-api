@@ -1208,6 +1208,28 @@ app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
 });
 
 // ==================== WEB EXPORT (IFC -> R2 + element_mapping + Fragments) ====================
+app.get('/element-mapping/:fileId/resolve', authenticateToken, async (req, res) => {
+    try {
+        const { guid } = req.query;
+        if (!guid) return res.status(400).json({ error: 'guid is required' });
+ 
+        const r = await pool.query(
+            `SELECT element_id, element_name FROM element_mapping
+             WHERE file_id = $1 AND ifc_guid = $2 LIMIT 1`,
+            [req.params.fileId, guid]
+        );
+ 
+        if (r.rows.length === 0) return res.json({ found: false });
+ 
+        res.json({
+            found: true,
+            elementId: Number(r.rows[0].element_id),
+            elementName: r.rows[0].element_name
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Jep nje presigned PUT URL per te ngarkuar IFC-ne direkt te R2.
 app.post('/web-export/:fileId/upload-url', authenticateToken, async (req, res) => {
