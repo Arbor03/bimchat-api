@@ -1231,6 +1231,32 @@ app.get('/element-mapping/:fileId/resolve', authenticateToken, async (req, res) 
     }
 });
 
+//  Perkthimi i KUNDERT: element_id -> ifc_guid (per web highlight).
+// ============================================================
+ 
+app.get('/element-mapping/:fileId/by-element', authenticateToken, async (req, res) => {
+    try {
+        const { elementId } = req.query;
+        if (!elementId) return res.status(400).json({ error: 'elementId is required' });
+ 
+        const r = await pool.query(
+            `SELECT ifc_guid, element_name FROM element_mapping
+             WHERE file_id = $1 AND element_id = $2 LIMIT 1`,
+            [req.params.fileId, parseInt(elementId)]
+        );
+ 
+        if (r.rows.length === 0) return res.json({ found: false });
+ 
+        res.json({
+            found: true,
+            ifcGuid: r.rows[0].ifc_guid,
+            elementName: r.rows[0].element_name
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Jep nje presigned PUT URL per te ngarkuar IFC-ne direkt te R2.
 app.post('/web-export/:fileId/upload-url', authenticateToken, async (req, res) => {
     try {
