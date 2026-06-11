@@ -161,6 +161,24 @@ async function initDB() {
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_project ON revit_files(project_id)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_guid ON revit_files(revit_project_guid)`); } catch {}
 
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS project_folders (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                parent_id INTEGER REFERENCES project_folders(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_folders_project ON project_folders(project_id)`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_folders_parent ON project_folders(parent_id)`); } catch {}
+ 
+        // Lidhja e nje revit_file me nje folder (nendarje)
+        try { await pool.query(`ALTER TABLE revit_files ADD COLUMN folder_id INTEGER REFERENCES project_folders(id) ON DELETE SET NULL`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_folder ON revit_files(folder_id)`); } catch {}
+
         // Web viewer: tabela lidhese ElementId <-> IfcGuid per cdo file
         await pool.query(`
             CREATE TABLE IF NOT EXISTS element_mapping (
@@ -1201,6 +1219,141 @@ app.get('/projects/by-file/:guid', authenticateToken, async (req, res) => {
 app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
     try {
         await pool.query('DELETE FROM revit_files WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Listo te gjitha nendarjet e nje projekti (peme: parent_id = NULL eshte niveli 1)
+app.get('/projects/:id/folders', authenticateToken, async (req, res) => {
+    try {
+        const pm = await pool.query(
+            `SELECT 1 FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
+ 
+        const result = await pool.query(
+            `SELECT id, project_id, parent_id, name, created_by, created_at
+             FROM project_folders WHERE project_id = $1
+             ORDER BY parent_id NULLS FIRST, name ASC`,
+            [req.params.id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+ 
+// Krijo nje nendarje (vetem BIM Manager). Body: { name, parent_id }
+// parent_id NULL = niveli 1; parent_id i vendosur = niveli 2 (max 2 nivele).
+app.post('/projects/:id/folders', authenticateToken, async (req, res) => {
+    try {
+        const { name, parent_id } = req.body;
+        if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+ 
+        const pm = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [req.params.id, req.user.email]
+        );
+        if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can create folders' });
+ 
+        // Kufizo ne 2 nivele: nese ka parent, parent-i s'duhet te kete vete parent.
+        if (parent_id) {
+            const parent = await pool.query(
+                `SELECT parent_id FROM project_folders WHERE id = $1 AND project_id = $2`,
+                [parent_id, req.params.id]
+            );
+            if (parent.rows.length === 0)
+                return res.status(400).json({ error: 'Parent folder not found' });
+            if (parent.rows[0].parent_id !== null)
+                return res.status(400).json({ error: 'Maximum 2 levels allowed' });
+        }
+ 
+        const result = await pool.query(
+            `INSERT INTO project_folders (project_id, parent_id, name, created_by)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [req.params.id, parent_id || null, name.trim(), req.user.email]
+        );
+        res.json({ success: true, folder: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+ 
+// Riemerto nje nendarje (vetem BIM Manager). Body: { name }
+app.put('/folders/:id', authenticateToken, async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+ 
+        const fr = await pool.query(`SELECT project_id FROM project_folders WHERE id = $1`, [req.params.id]);
+        if (fr.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
+ 
+        const pm = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [fr.rows[0].project_id, req.user.email]
+        );
+        if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can rename folders' });
+ 
+        await pool.query(`UPDATE project_folders SET name = $1 WHERE id = $2`, [name.trim(), req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+ 
+// Fshi nje nendarje (vetem BIM Manager). Fshin edhe nen-folderat (CASCADE).
+// Files brenda saj s'fshihen — folder_id behet NULL (ON DELETE SET NULL).
+app.delete('/folders/:id', authenticateToken, async (req, res) => {
+    try {
+        const fr = await pool.query(`SELECT project_id FROM project_folders WHERE id = $1`, [req.params.id]);
+        if (fr.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
+ 
+        const pm = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [fr.rows[0].project_id, req.user.email]
+        );
+        if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can delete folders' });
+ 
+        await pool.query(`DELETE FROM project_folders WHERE id = $1`, [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+ 
+// Cakto (ose hiq) folderin e nje revit_file. Body: { folder_id }  (null = pa folder)
+app.put('/revit-files/:id/folder', authenticateToken, async (req, res) => {
+    try {
+        const { folder_id } = req.body;
+ 
+        const fr = await pool.query(`SELECT project_id FROM revit_files WHERE id = $1`, [req.params.id]);
+        if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+ 
+        const pm = await pool.query(
+            `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [fr.rows[0].project_id, req.user.email]
+        );
+        if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
+            return res.status(403).json({ error: 'Only BIM Manager can assign folders' });
+ 
+        // Nese vendoset nje folder, sigurohu qe i perket te njejtit projekt
+        if (folder_id) {
+            const fol = await pool.query(
+                `SELECT 1 FROM project_folders WHERE id = $1 AND project_id = $2`,
+                [folder_id, fr.rows[0].project_id]
+            );
+            if (fol.rows.length === 0)
+                return res.status(400).json({ error: 'Folder not in this project' });
+        }
+ 
+        await pool.query(`UPDATE revit_files SET folder_id = $1 WHERE id = $2`,
+            [folder_id || null, req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
