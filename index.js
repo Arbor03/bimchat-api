@@ -161,7 +161,7 @@ async function initDB() {
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_project ON revit_files(project_id)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_guid ON revit_files(revit_project_guid)`); } catch {}
 
-
+        // ==================== PROJECT FOLDERS (nendarjet, max 2 nivele) ====================
         await pool.query(`
             CREATE TABLE IF NOT EXISTS project_folders (
                 id SERIAL PRIMARY KEY,
@@ -174,10 +174,43 @@ async function initDB() {
         `);
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_folders_project ON project_folders(project_id)`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_folders_parent ON project_folders(parent_id)`); } catch {}
- 
+
         // Lidhja e nje revit_file me nje folder (nendarje)
         try { await pool.query(`ALTER TABLE revit_files ADD COLUMN folder_id INTEGER REFERENCES project_folders(id) ON DELETE SET NULL`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_revit_files_folder ON revit_files(folder_id)`); } catch {}
+
+        // ==================== CHAT CONVERSATIONS (DM + Grupe, me nivele) ====================
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS conversations (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                type TEXT NOT NULL DEFAULT 'group',
+                name TEXT,
+                level TEXT NOT NULL DEFAULT 'project',
+                folder_id INTEGER REFERENCES project_folders(id) ON DELETE CASCADE,
+                file_id INTEGER REFERENCES revit_files(id) ON DELETE CASCADE,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id)`); } catch {}
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS conversation_members (
+                conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+                user_email TEXT NOT NULL,
+                added_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (conversation_id, user_email)
+            )
+        `);
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_conv_members_email ON conversation_members(user_email)`); } catch {}
+
+        // Mesazhet tani mund t'i perkasin nje 'conversation' (chat-i i ri).
+        try { await pool.query(`ALTER TABLE messages ADD COLUMN conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE`); } catch {}
+        try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)`); } catch {}
+
+        // Per "Convert message -> Task": ruajme nga cili mesazh u krijua task-u.
+        try { await pool.query(`ALTER TABLE tasks ADD COLUMN source_message_id TEXT`); } catch {}
 
         // Web viewer: tabela lidhese ElementId <-> IfcGuid per cdo file
         await pool.query(`
@@ -1225,6 +1258,8 @@ app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// ==================== PROJECT FOLDERS (nendarjet) ====================
+
 // Listo te gjitha nendarjet e nje projekti (peme: parent_id = NULL eshte niveli 1)
 app.get('/projects/:id/folders', authenticateToken, async (req, res) => {
     try {
@@ -1233,7 +1268,7 @@ app.get('/projects/:id/folders', authenticateToken, async (req, res) => {
             [req.params.id, req.user.email]
         );
         if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
- 
+
         const result = await pool.query(
             `SELECT id, project_id, parent_id, name, created_by, created_at
              FROM project_folders WHERE project_id = $1
@@ -1245,21 +1280,20 @@ app.get('/projects/:id/folders', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
- 
+
 // Krijo nje nendarje (vetem BIM Manager). Body: { name, parent_id }
-// parent_id NULL = niveli 1; parent_id i vendosur = niveli 2 (max 2 nivele).
 app.post('/projects/:id/folders', authenticateToken, async (req, res) => {
     try {
         const { name, parent_id } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
- 
+
         const pm = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
         );
         if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
             return res.status(403).json({ error: 'Only BIM Manager can create folders' });
- 
+
         // Kufizo ne 2 nivele: nese ka parent, parent-i s'duhet te kete vete parent.
         if (parent_id) {
             const parent = await pool.query(
@@ -1271,7 +1305,7 @@ app.post('/projects/:id/folders', authenticateToken, async (req, res) => {
             if (parent.rows[0].parent_id !== null)
                 return res.status(400).json({ error: 'Maximum 2 levels allowed' });
         }
- 
+
         const result = await pool.query(
             `INSERT INTO project_folders (project_id, parent_id, name, created_by)
              VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -1282,67 +1316,67 @@ app.post('/projects/:id/folders', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
- 
+
 // Riemerto nje nendarje (vetem BIM Manager). Body: { name }
 app.put('/folders/:id', authenticateToken, async (req, res) => {
     try {
         const { name } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
- 
+
         const fr = await pool.query(`SELECT project_id FROM project_folders WHERE id = $1`, [req.params.id]);
         if (fr.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
- 
+
         const pm = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [fr.rows[0].project_id, req.user.email]
         );
         if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
             return res.status(403).json({ error: 'Only BIM Manager can rename folders' });
- 
+
         await pool.query(`UPDATE project_folders SET name = $1 WHERE id = $2`, [name.trim(), req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
- 
+
 // Fshi nje nendarje (vetem BIM Manager). Fshin edhe nen-folderat (CASCADE).
 // Files brenda saj s'fshihen — folder_id behet NULL (ON DELETE SET NULL).
 app.delete('/folders/:id', authenticateToken, async (req, res) => {
     try {
         const fr = await pool.query(`SELECT project_id FROM project_folders WHERE id = $1`, [req.params.id]);
         if (fr.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
- 
+
         const pm = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [fr.rows[0].project_id, req.user.email]
         );
         if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
             return res.status(403).json({ error: 'Only BIM Manager can delete folders' });
- 
+
         await pool.query(`DELETE FROM project_folders WHERE id = $1`, [req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
- 
+
 // Cakto (ose hiq) folderin e nje revit_file. Body: { folder_id }  (null = pa folder)
+// Thirret nga add-in kur Revit ruan modelin ne nje folder (jo nga web).
 app.put('/revit-files/:id/folder', authenticateToken, async (req, res) => {
     try {
         const { folder_id } = req.body;
- 
+
         const fr = await pool.query(`SELECT project_id FROM revit_files WHERE id = $1`, [req.params.id]);
         if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
- 
+
         const pm = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [fr.rows[0].project_id, req.user.email]
         );
         if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
             return res.status(403).json({ error: 'Only BIM Manager can assign folders' });
- 
-        // Nese vendoset nje folder, sigurohu qe i perket te njejtit projekt
+
         if (folder_id) {
             const fol = await pool.query(
                 `SELECT 1 FROM project_folders WHERE id = $1 AND project_id = $2`,
@@ -1351,7 +1385,7 @@ app.put('/revit-files/:id/folder', authenticateToken, async (req, res) => {
             if (fol.rows.length === 0)
                 return res.status(400).json({ error: 'Folder not in this project' });
         }
- 
+
         await pool.query(`UPDATE revit_files SET folder_id = $1 WHERE id = $2`,
             [folder_id || null, req.params.id]);
         res.json({ success: true });
@@ -1749,6 +1783,247 @@ app.get('/users/:projectName', authenticateToken, async (req, res) => {
         );
         res.json(result.rows);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==================== CHAT CONVERSATIONS (DM + Grupe) ====================
+
+// Ndihmes: a eshte useri anetar i bisedes?
+async function isConversationMember(conversationId, email) {
+    const r = await pool.query(
+        `SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_email = $2`,
+        [conversationId, email]
+    );
+    return r.rows.length > 0;
+}
+
+// Krijo nje bisede (DM ose Grup).
+app.post('/conversations', authenticateToken, async (req, res) => {
+    try {
+        const { project_id, type, name, level, folder_id, file_id, members } = req.body;
+        const me = req.user.email;
+
+        if (!project_id) return res.status(400).json({ error: 'project_id is required' });
+
+        const convType = (type === 'dm') ? 'dm' : 'group';
+        const convLevel = ['project', 'folder', 'model'].includes(level) ? level : 'project';
+
+        const pm = await pool.query(
+            `SELECT 1 FROM project_members WHERE project_id = $1 AND user_email = $2`,
+            [project_id, me]
+        );
+        if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
+
+        let folderId = null, fileId = null;
+        if (convLevel === 'folder') {
+            if (!folder_id) return res.status(400).json({ error: 'folder_id required for folder level' });
+            const f = await pool.query(`SELECT 1 FROM project_folders WHERE id = $1 AND project_id = $2`, [folder_id, project_id]);
+            if (f.rows.length === 0) return res.status(400).json({ error: 'Folder not in this project' });
+            folderId = folder_id;
+        } else if (convLevel === 'model') {
+            if (!file_id) return res.status(400).json({ error: 'file_id required for model level' });
+            const f = await pool.query(`SELECT 1 FROM revit_files WHERE id = $1 AND project_id = $2`, [file_id, project_id]);
+            if (f.rows.length === 0) return res.status(400).json({ error: 'File not in this project' });
+            fileId = file_id;
+        }
+
+        const memberList = Array.isArray(members) ? members.map(m => (m || '').toLowerCase()).filter(Boolean) : [];
+        if (!memberList.includes(me.toLowerCase())) memberList.push(me.toLowerCase());
+        const uniqueMembers = [...new Set(memberList)];
+
+        if (convType === 'dm') {
+            if (uniqueMembers.length !== 2)
+                return res.status(400).json({ error: 'A DM needs exactly one other member' });
+
+            const [a, b] = uniqueMembers;
+            const existing = await pool.query(
+                `SELECT c.id FROM conversations c
+                 JOIN conversation_members m1 ON m1.conversation_id = c.id AND m1.user_email = $1
+                 JOIN conversation_members m2 ON m2.conversation_id = c.id AND m2.user_email = $2
+                 WHERE c.type = 'dm' AND c.project_id = $3 AND c.level = $4
+                   AND COALESCE(c.folder_id, 0) = COALESCE($5, 0)
+                   AND COALESCE(c.file_id, 0) = COALESCE($6, 0)
+                 LIMIT 1`,
+                [a, b, project_id, convLevel, folderId, fileId]
+            );
+            if (existing.rows.length > 0)
+                return res.json({ success: true, conversation_id: existing.rows[0].id, existed: true });
+        } else {
+            if (!name || !name.trim()) return res.status(400).json({ error: 'Group name is required' });
+        }
+
+        const conv = await pool.query(
+            `INSERT INTO conversations (project_id, type, name, level, folder_id, file_id, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [project_id, convType, convType === 'group' ? name.trim() : null, convLevel, folderId, fileId, me]
+        );
+        const conversationId = conv.rows[0].id;
+
+        for (const email of uniqueMembers) {
+            await pool.query(
+                `INSERT INTO conversation_members (conversation_id, user_email)
+                 VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+                [conversationId, email]
+            );
+        }
+
+        res.json({ success: true, conversation_id: conversationId, conversation: conv.rows[0] });
+    } catch (err) {
+        console.error('Create conversation error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Listo bisedat e nje projekti ku useri eshte anetar.
+app.get('/conversations', authenticateToken, async (req, res) => {
+    try {
+        const { project_id } = req.query;
+        if (!project_id) return res.status(400).json({ error: 'project_id is required' });
+
+        const result = await pool.query(
+            `SELECT c.*,
+                    (SELECT array_agg(user_email) FROM conversation_members WHERE conversation_id = c.id) AS members,
+                    (SELECT MAX(created_at) FROM messages WHERE conversation_id = c.id) AS last_message_at
+             FROM conversations c
+             JOIN conversation_members cm ON cm.conversation_id = c.id AND cm.user_email = $1
+             WHERE c.project_id = $2
+             ORDER BY last_message_at DESC NULLS LAST, c.created_at DESC`,
+            [req.user.email, project_id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Mesazhet e nje bisede (vetem anetaret).
+app.get('/conversations/:id/messages', authenticateToken, async (req, res) => {
+    try {
+        if (!await isConversationMember(req.params.id, req.user.email))
+            return res.status(403).json({ error: 'Not a member of this conversation' });
+
+        const result = await pool.query(
+            `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 200`,
+            [req.params.id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Dergo nje mesazh ne nje bisede (vetem anetaret).
+app.post('/conversations/:id/messages', authenticateToken, async (req, res) => {
+    try {
+        if (!await isConversationMember(req.params.id, req.user.email))
+            return res.status(403).json({ error: 'Not a member of this conversation' });
+
+        const { message, element_id, element_name, file_id } = req.body;
+        if (!message || !message.trim()) return res.status(400).json({ error: 'message is required' });
+
+        const conv = await pool.query(
+            `SELECT c.project_id, p.name AS project_name
+             FROM conversations c JOIN projects p ON p.id = c.project_id
+             WHERE c.id = $1`,
+            [req.params.id]
+        );
+        if (conv.rows.length === 0) return res.status(404).json({ error: 'Conversation not found' });
+
+        const id = crypto.randomUUID();
+        await pool.query(
+            `INSERT INTO messages (id, project_name, sender, receiver, message, element_id, element_name, file_id, conversation_id)
+             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8)`,
+            [id, conv.rows[0].project_name, req.user.email, message, element_id || -1, element_name || null, file_id || null, req.params.id]
+        );
+
+        res.json({ success: true, id });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Shto nje anetar (cdo anetar mund te shtoje - pa kufizime aksesi tani).
+app.post('/conversations/:id/members', authenticateToken, async (req, res) => {
+    try {
+        if (!await isConversationMember(req.params.id, req.user.email))
+            return res.status(403).json({ error: 'Not a member of this conversation' });
+
+        const { user_email } = req.body;
+        if (!user_email) return res.status(400).json({ error: 'user_email is required' });
+
+        const u = await pool.query(`SELECT 1 FROM users WHERE email = $1`, [user_email.toLowerCase()]);
+        if (u.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        await pool.query(
+            `INSERT INTO conversation_members (conversation_id, user_email)
+             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [req.params.id, user_email.toLowerCase()]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Largo nje anetar. Vetja mund te largohet gjithmone; krijuesi mund te largoje ke te doje.
+app.delete('/conversations/:id/members/:email', authenticateToken, async (req, res) => {
+    try {
+        const target = req.params.email.toLowerCase();
+        const me = req.user.email.toLowerCase();
+
+        if (!await isConversationMember(req.params.id, req.user.email))
+            return res.status(403).json({ error: 'Not a member of this conversation' });
+
+        if (target !== me) {
+            const conv = await pool.query(`SELECT created_by FROM conversations WHERE id = $1`, [req.params.id]);
+            if (conv.rows.length === 0) return res.status(404).json({ error: 'Conversation not found' });
+            if ((conv.rows[0].created_by || '').toLowerCase() !== me)
+                return res.status(403).json({ error: 'Only the creator can remove other members' });
+        }
+
+        await pool.query(
+            `DELETE FROM conversation_members WHERE conversation_id = $1 AND user_email = $2`,
+            [req.params.id, target]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Convert message -> Task. Krijon nje task qe trashegon element + tekst nga mesazhi.
+app.post('/tasks/from-message', authenticateToken, async (req, res) => {
+    try {
+        const { message_id, assignee, status } = req.body;
+        if (!message_id) return res.status(400).json({ error: 'message_id is required' });
+
+        const m = await pool.query(`SELECT * FROM messages WHERE id = $1`, [message_id]);
+        if (m.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
+        const msg = m.rows[0];
+
+        if (msg.conversation_id) {
+            if (!await isConversationMember(msg.conversation_id, req.user.email))
+                return res.status(403).json({ error: 'Not a member of this conversation' });
+        }
+
+        const taskId = crypto.randomUUID();
+        await pool.query(
+            `INSERT INTO tasks (id, project_name, description, assignee, created_by, element_id, element_name, view_name, status, file_id, source_message_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [taskId, msg.project_name, msg.message, assignee || null, req.user.email,
+             msg.element_id || -1, msg.element_name || '', '', status || 'Open', msg.file_id || null, message_id]
+        );
+
+        await pool.query(
+            `INSERT INTO notifications (id, type, message, created_by, task_id, project_name)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [crypto.randomUUID(), 'NewTask', `${req.user.email} created task from message: '${msg.message}'`, req.user.email, taskId, msg.project_name]
+        );
+
+        res.json({ success: true, id: taskId });
+    } catch (err) {
+        console.error('Convert message to task error:', err);
         res.status(500).json({ error: err.message });
     }
 });
