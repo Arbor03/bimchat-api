@@ -1291,8 +1291,8 @@ app.post('/projects/:id/folders', authenticateToken, async (req, res) => {
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
             [req.params.id, req.user.email]
         );
-        if (pm.rows.length === 0 || pm.rows[0].role !== 'BIM Manager')
-            return res.status(403).json({ error: 'Only BIM Manager can create folders' });
+        if (pm.rows.length === 0)
+            return res.status(403).json({ error: 'Not a member of this project' });
 
         // Kufizo ne 2 nivele: nese ka parent, parent-i s'duhet te kete vete parent.
         if (parent_id) {
