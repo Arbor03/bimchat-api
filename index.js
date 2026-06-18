@@ -1112,18 +1112,76 @@ app.put('/projects/:id', authenticateToken, async (req, res) => {
     }
 });
 
+
 app.delete('/projects/:id', authenticateToken, async (req, res) => {
     try {
+        const projectId = req.params.id;
+
         const memberCheck = await pool.query(
             `SELECT role FROM project_members WHERE project_id = $1 AND user_email = $2`,
-            [req.params.id, req.user.email]
+            [projectId, req.user.email]
         );
         if (memberCheck.rows.length === 0 || memberCheck.rows[0].role !== 'BIM Manager')
             return res.status(403).json({ error: 'Only BIM Manager can delete project' });
 
-        await pool.query('DELETE FROM projects WHERE id = $1', [req.params.id]);
-        res.json({ success: true });
+        // ---- Mblidh te gjithe celesat e storage (B2) PARA se te fshijme projektin ----
+        // (DELETE FROM projects kaskadon rreshtat, ndaj duhet t'i lexojme tani.)
+        const keys = new Set();
+
+        if (b2Client) {
+            try {
+                // Web viewer exports: IFC + Fragments per cdo revit_file
+                const rf = await pool.query(
+                    `SELECT ifc_r2_key, frag_r2_key FROM revit_files WHERE project_id = $1`,
+                    [projectId]
+                );
+                for (const r of rf.rows) {
+                    if (r.ifc_r2_key) keys.add(r.ifc_r2_key);
+                    if (r.frag_r2_key) keys.add(r.frag_r2_key);
+                }
+
+                // BIMChat Drive: versioni aktual i cdo .rvt
+                const cf = await pool.query(
+                    `SELECT b2_key FROM cloud_files WHERE project_id = $1`,
+                    [projectId]
+                );
+                for (const r of cf.rows) if (r.b2_key) keys.add(r.b2_key);
+
+                // BIMChat Drive: versionet e vjetra
+                const fv = await pool.query(
+                    `SELECT fv.b2_key FROM file_versions fv
+                     JOIN cloud_files cf ON cf.id = fv.cloud_file_id
+                     WHERE cf.project_id = $1`,
+                    [projectId]
+                );
+                for (const r of fv.rows) if (r.b2_key) keys.add(r.b2_key);
+            } catch (collectErr) {
+                console.error('Project delete: key collection error:', collectErr.message);
+            }
+
+            // Fshi cdo objekt nga B2 (best-effort: nje deshtim s'e ndalon fshirjen e projektit)
+            let deleted = 0, failed = 0;
+            for (const key of keys) {
+                try {
+                    await b2Client.send(new DeleteObjectCommand({
+                        Bucket: process.env.B2_BUCKET_NAME,
+                        Key: key
+                    }));
+                    deleted++;
+                } catch (delErr) {
+                    failed++;
+                    console.error(`Project delete: failed to remove ${key}:`, delErr.message);
+                }
+            }
+            console.log(`🗑️  Project ${projectId} storage cleanup: ${deleted} deleted, ${failed} failed (${keys.size} total)`);
+        }
+
+        // ---- Fshi projektin (DB kaskadon: members, revit_files, folders, conversations, messages, cloud_files, versions...) ----
+        await pool.query('DELETE FROM projects WHERE id = $1', [projectId]);
+
+        res.json({ success: true, storage_deleted: keys.size });
     } catch (err) {
+        console.error('Delete project error:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1238,32 +1296,6 @@ app.get('/projects/by-file/:guid', authenticateToken, async (req, res) => {
              WHERE rf.revit_project_guid = $1
              LIMIT 1`,
             [req.params.guid]
-        );
-
-        if (result.rows.length === 0)
-            return res.status(404).json({ error: 'No project linked to this file' });
-
-        res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Lookup i njejte, por GUID-i vjen nga QUERY (jo path).
-// .NET HttpClient kanonikalizon backslash-et ne path (%5C -> \ -> /), keshtu qe
-// path-i prishet; query-ja s'preket. Add-in perdor kete rruge.
-app.get('/projects-by-file', authenticateToken, async (req, res) => {
-    try {
-        const guid = (req.query.guid || '').toString();
-        if (!guid) return res.status(400).json({ error: 'guid is required' });
-
-        const result = await pool.query(
-            `SELECT p.*, rf.id as file_id, rf.file_name
-             FROM revit_files rf
-             JOIN projects p ON p.id = rf.project_id
-             WHERE rf.revit_project_guid = $1
-             LIMIT 1`,
-            [guid]
         );
 
         if (result.rows.length === 0)
