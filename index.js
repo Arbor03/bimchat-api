@@ -379,6 +379,11 @@ function authenticateToken(req, res, next) {
     });
 }
 
+// Optional synthetic-only ownership module; no change when disabled.
+if (process.env.BIMCHAT_SYNTHETIC_ONLINE === '1') {
+    require('./synthetic-ownership/install.cjs')({ app, express, pool, authenticateToken, expectedDatabase: process.env.BIMCHAT_SYNTHETIC_DATABASE, environmentId: process.env.BIMCHAT_SYNTHETIC_ENVIRONMENT_ID });
+}
+
 // ==================== FRAGMENTS CONVERSION (worker thread) ====================
 
 function startFragConversion(fileId, ifcR2Key) {
