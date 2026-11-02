@@ -1054,6 +1054,32 @@ app.get('/projects', authenticateToken, async (req, res) => {
     }
 });
 
+async function lookupProjectByFile(req, res) {
+    const guid = req.params.guid !== undefined ? req.params.guid : req.query.guid;
+    if (typeof guid !== 'string' || !guid.trim() || guid.length > 256)
+        return res.status(400).json({ error: 'A valid model guid is required' });
+    try {
+        const result = await pool.query(
+            `SELECT p.*, rf.id as file_id, rf.file_name
+             FROM revit_files rf
+             JOIN projects p ON p.id = rf.project_id
+             WHERE rf.revit_project_guid = $1
+             LIMIT 1`,
+            [guid]
+        );
+
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'No project linked to this file' });
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+}
+
+// The installed add-in uses the query form; register it before /projects/:id.
+app.get('/projects/by-file', authenticateToken, lookupProjectByFile);
+
 app.get('/projects/:id', authenticateToken, async (req, res) => {
     try {
         const projectResult = await pool.query(
@@ -1321,25 +1347,7 @@ app.post('/projects/:id/link-file', authenticateToken, async (req, res) => {
     }
 });
 
-app.get('/projects/by-file/:guid', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT p.*, rf.id as file_id, rf.file_name
-             FROM revit_files rf
-             JOIN projects p ON p.id = rf.project_id
-             WHERE rf.revit_project_guid = $1
-             LIMIT 1`,
-            [req.params.guid]
-        );
-
-        if (result.rows.length === 0)
-            return res.status(404).json({ error: 'No project linked to this file' });
-
-        res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+app.get('/projects/by-file/:guid', authenticateToken, lookupProjectByFile);
 
 app.delete('/revit-files/:id', authenticateToken, async (req, res) => {
     try {
