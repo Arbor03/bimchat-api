@@ -17,10 +17,13 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-const pool = new Pool({
+const ownershipEnabled = process.env.BIMCHAT_PRODUCT_OWNERSHIP === '1';
+const rawPool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
+
+const pool = require('./product-writer-fences.cjs')({enabled:ownershipEnabled,app,rawPool});
 
 // ==================== CLOUDINARY CONFIG ====================
 
@@ -44,6 +47,7 @@ if (process.env.B2_KEY_ID && process.env.B2_APPLICATION_KEY && process.env.B2_EN
     b2Client = new S3Client({
         endpoint: 'https://' + process.env.B2_ENDPOINT,
         region: 'auto',
+        ...(ownershipEnabled ? {maxAttempts:1} : {}),
         credentials: {
             accessKeyId: process.env.B2_KEY_ID,
             secretAccessKey: process.env.B2_APPLICATION_KEY
@@ -86,6 +90,12 @@ const upload = multer({
         fileSize: 10 * 1024 * 1024 // 10 MB
     }
 });
+
+const ownershipUploads = ownershipEnabled && b2Client ? require('./product-upload-receipts.cjs')({
+    rawPool,
+    r2: require('./ephemeral-attempt-v1/r2-content.cjs')({client:b2Client,bucket:process.env.B2_BUCKET_NAME,HeadObjectCommand,GetObjectCommand,PutObjectCommand}),
+    signUpload: key => getSignedUrl(b2Client,new PutObjectCommand({Bucket:process.env.B2_BUCKET_NAME,Key:key,ContentType:'application/octet-stream'}),{expiresIn:3600})
+}) : null;
 
 // Email transporter for password reset
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -387,6 +397,7 @@ if (process.env.BIMCHAT_SYNTHETIC_ONLINE === '1') {
 // ==================== FRAGMENTS CONVERSION (worker thread) ====================
 
 function startFragConversion(fileId, ifcR2Key) {
+    if (ownershipEnabled) return runCoordinatedFragConversion(fileId, ifcR2Key);
     if (!ifcR2Key) return;
 
     pool.query(`UPDATE revit_files SET frag_status='pending', frag_error=NULL WHERE id=$1`, [fileId])
@@ -426,6 +437,16 @@ function startFragConversion(fileId, ifcR2Key) {
     worker.on('exit', (code) => {
         if (code !== 0) console.error(`frag worker exited code ${code} for file ${fileId}`);
     });
+}
+
+async function runCoordinatedFragConversion(fileId, ifcR2Key) {
+    if (!ifcR2Key) throw new Error('OWNERSHIP_WORKER_INPUT_REQUIRED');
+    // The route's durable storage reservation remains started until the worker
+    // exits and this catalog write commits. Message-only success is insufficient.
+    await pool.query("UPDATE revit_files SET frag_status='pending', frag_error=NULL WHERE id=$1", [fileId]);
+    const result = await require('./scoped-api-v11/worker-lifecycle.cjs').run(() =>
+        new Worker(require('path').join(__dirname, 'fragWorker.js'), {workerData:{fileId,ifcR2Key,ownershipCoordinated:true}}));
+    await pool.query("UPDATE revit_files SET frag_r2_key=$1, frag_status='ready', frag_error=NULL WHERE id=$2", [result.fragKey,fileId]);
 }
 
 // ==================== AUTH ROUTES ====================
@@ -721,6 +742,10 @@ app.post('/drive/files/upload-url', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Not a member of this project' });
         }
 
+        if (ownershipUploads) {
+            const scoped = await ownershipUploads.issue(pool, req);
+            if (scoped) return res.json(scoped);
+        }
         const b2Key = `project-${projectId}/${relativePath.replace(/^\/+/, '')}`;
 
         const command = new PutObjectCommand({
@@ -750,6 +775,10 @@ app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
+        if (ownershipUploads) {
+            const scoped = await ownershipUploads.confirm(pool, req);
+            if (scoped) return res.json(scoped);
+        }
         const existing = await pool.query(
             `SELECT * FROM cloud_files WHERE project_id = $1 AND relative_path = $2`,
             [projectId, relativePath]
@@ -1575,7 +1604,8 @@ app.post('/web-export/:fileId/confirm', authenticateToken, async (req, res) => {
         }
 
         // Nis konvertimin Fragments ne sfond (fire-and-forget)
-        startFragConversion(fileId, r2Key);
+        if (ownershipEnabled) await startFragConversion(fileId, r2Key);
+        else startFragConversion(fileId, r2Key);
 
         res.json({ success: true, count: map.length });
     } catch (err) {
@@ -2229,7 +2259,23 @@ app.delete('/attachments/:id', authenticateToken, async (req, res) => {
 
 // ==================== START SERVER ====================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+const listen = () => app.listen(PORT, async () => {
     await initDB();
     console.log(`BIM Chat API running on port ${PORT}`);
 });
+
+    if (!ownershipEnabled) listen();
+    else {
+        // Public review only; supplied through deployment review, never generated
+        // or enrolled at startup. No permissive defaults or automatic migration.
+        const reviewPath = process.env.BIMCHAT_OWNERSHIP_REVIEW_PATH;
+        if (!reviewPath || !require('path').isAbsolute(reviewPath)) throw new Error('OWNERSHIP_REVIEW_FILE_REQUIRED');
+        const reviewBytes = require('fs').readFileSync(reviewPath);
+        if (reviewBytes.length > 131072) throw new Error('OWNERSHIP_REVIEW_TOO_LARGE');
+        const review = JSON.parse(reviewBytes.toString('utf8'));
+        require('./product-ownership.cjs')({enabled:true,app,jwt:authenticateToken,pool:rawPool,
+            r2Client:b2Client,r2Commands:{HeadObjectCommand,GetObjectCommand,PutObjectCommand},bucket:process.env.B2_BUCKET_NAME,
+            review,approvedDigest:process.env.BIMCHAT_OWNERSHIP_REVIEW_DIGEST,
+            writerInventoryDigest:process.env.BIMCHAT_OWNERSHIP_WRITER_DIGEST})
+            .then(listen).catch(() => { console.error('Ownership startup refused: review/configuration not ready.');process.exitCode=1;rawPool.end(); });
+    }

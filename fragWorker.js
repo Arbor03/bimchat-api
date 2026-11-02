@@ -22,6 +22,7 @@ async function streamToBuffer(stream) {
         const s3 = new S3Client({
             endpoint: 'https://' + process.env.B2_ENDPOINT,
             region: 'auto',
+            ...(workerData.ownershipCoordinated === true ? {maxAttempts:1} : {}),
             credentials: {
                 accessKeyId: process.env.B2_KEY_ID,
                 secretAccessKey: process.env.B2_APPLICATION_KEY
