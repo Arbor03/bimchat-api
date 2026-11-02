@@ -9,7 +9,7 @@ function prepare(head,pairDigest,now){
  const participants=[];
  for(const role of ['source','receiver']){const proposal=pair[role],p=proposal&&proposal.profile;need(proposal&&proposal.stage==='native'&&p.email===h[role+'Email']&&p.attempt===h.id&&p.drive.sha256===h[role+'Build']&&p.addinBuild===h[role+'AddinBuild'],'BOOTSTRAP_PAIR_BINDING');
   proof.verify(proposal.signed,{email:p.email,method:'POST',path:'/drive/ownership/session-proposal',body:{stage:proposal.proofStage||'native',profile:p}},{email:p.email,sessionId:p.session,deviceId:p.device,publicJwk:p.publicJwk,publicKeyDigest:p.keyDigest},h.bootstrapPlanDigest,proposal.receivedAt);
-  need(p.expiresAt>now+90000&&p.expiresAt<=h.bootstrapExpiresAt,'BOOTSTRAP_KEY_WINDOW');const m=p.native.mapping;
+  need(p.expiresAt>now+90000&&p.expiresAt<=require('./product-session-lifetime.cjs').enrollmentLimit(h,now),'BOOTSTRAP_KEY_WINDOW');const m=p.native.mapping;
   if(h.renewalPrevious){need(h.renewalEvidenceDigest&&h.renewalBaselinePins&&proof.canonical(p.native.pins)===proof.canonical(h.renewalBaselinePins[p.email]),'BOOTSTRAP_RENEWAL_PREIMAGE_CHANGED');need(p.session!==h.renewalPrevious.sourceSession&&p.session!==h.renewalPrevious.receiverSession,'BOOTSTRAP_RENEWAL_SESSION_REUSED');}
   need(m.CentralLogical===h.logicalCentralPath&&m.ProjectId===h.projectId&&!m.GroupMember&&typeof m.ElementUniqueId==='string','BOOTSTRAP_MODEL_BINDING');policy.pins(p.native.pins);
   if(h.ordinaryUserChanges===true)need(m.IdentityKind==='project-information','BOOTSTRAP_MODEL_IDENTITY_KIND');
@@ -22,7 +22,7 @@ function prepare(head,pairDigest,now){
  need(a.native.mapping.ElementUniqueId===b.native.mapping.ElementUniqueId&&a.native.mapping.RevitUser!==b.native.mapping.RevitUser&&a.email!==b.email&&a.session!==b.session&&a.device!==b.device,'BOOTSTRAP_DISTINCT_PAIR');
  policy.baselineMatch(h.sourcePins,h.receiverPins);h.elementUniqueId=a.native.mapping.ElementUniqueId;h.preBundle=policy.pins(h.sourcePins);
  h.pairedReview={bootstrapPlanDigest:h.bootstrapPlanDigest,pairDigest,projectId:h.projectId,centralPath:h.centralPath,logicalCentralPath:h.logicalCentralPath,elementUniqueId:h.elementUniqueId,sourceEmail:h.sourceEmail,participants};
- h.reviewDigest=proof.hash(h.pairedReview);h.expiresAt=Math.min(a.expiresAt,b.expiresAt,h.bootstrapExpiresAt,now+600000);h.generation=require('node:crypto').randomUUID();
+ h.reviewDigest=proof.hash(h.pairedReview);h.expiresAt=Math.min(a.expiresAt,b.expiresAt,require('./product-session-lifetime.cjs').enrollmentLimit(h,now));h.generation=require('node:crypto').randomUUID();
  h.receiverMode='open-ui-turn';if(h.ordinaryUserChanges===true){h.nativeAction='observe-user-change';h.observedHistory=[];h.ordinaryEnrollmentSourceEmail=h.sourceEmail;}else{h.nativeAction='checkout';h.cycle={kind:cycle.kind,leg:0,history:[]};}h.state='armed';h.enabled=true;h.revision++;policy.validateReviewed(h);return h;
 }
 async function activate(pool,id,approvedPairDigest,authorization){const c=await pool.connect();try{await c.query('BEGIN');const first=(await c.query('SELECT project_id FROM bimchat_direct_ownership.attempts WHERE id=$1',[id])).rows[0];need(first,'BOOTSTRAP_UNKNOWN');await scope.lock(c,first.project_id);

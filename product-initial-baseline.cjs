@@ -56,7 +56,7 @@ module.exports=function({pool,r2,review,writerInventoryDigest}){
     const cap={project_id:h.projectId,relative_path:f.path,object_key:f.oldKey},expectedPin=expected.get(f.id);
     // Native snapshots authorize the starting content, not a live UI hold.
     // Bound each R2 call separately and preserve time for fresh confirmation.
-    const deadline=Math.min(Date.now()+30000,h.bootstrapExpiresAt-120000,...['source','receiver'].map(role=>h.bootstrapProposals[role].profile.expiresAt-120000));
+    const deadline=Math.min(Date.now()+30000,require('./product-session-lifetime.cjs').enrollmentLimit(h,Date.now())-120000,...['source','receiver'].map(role=>h.bootstrapProposals[role].profile.expiresAt-120000));
     const sealed=await r2.seal({...cap,expected:expectedPin,deadline},pins.reservation(pool,cap));
     need(sealed.contentVerified===true&&(!expectedPin||(sealed.sha256===expectedPin.sha256&&sealed.size===expectedPin.size)),'INITIAL_R2_CONTENT');
     const catalogRow=current.find(x=>x.id===f.id);need(sealed.size===Number(catalogRow.file_size),'INITIAL_R2_CATALOG_SIZE');

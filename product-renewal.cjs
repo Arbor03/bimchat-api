@@ -32,7 +32,7 @@ module.exports=function({pool}){
    if(!h.renewalProposals.source||!h.renewalProposals.receiver){await c.query('UPDATE bimchat_direct_ownership.attempts SET document=$2 WHERE id=$1',[h.id,JSON.stringify(h)]);await c.query('COMMIT');return {accepted:true,renewed:false};}
    now=+new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
    for(const r of ['source','receiver'])await authenticate(c,h,r,h.renewalProposals[r].signed,'renew-after-sync',h.renewalProposals[r].body,now);
-   const publicationId=require('node:crypto').randomUUID(),next=require('./product-post-sync-renewal.cjs').prepare(h,{...current,source:h.renewalProposals.source.body,receiver:h.renewalProposals.receiver.body,publicationId,now,bootstrapExpiresAt:h.bootstrapExpiresAt});delete next.head.renewalProposals;
+   const publicationId=require('node:crypto').randomUUID(),next=require('./product-post-sync-renewal.cjs').prepare(h,{...current,source:h.renewalProposals.source.body,receiver:h.renewalProposals.receiver.body,publicationId,now,bootstrapExpiresAt:require('./product-session-lifetime.cjs').nextWindow(h,now)});delete next.head.renewalProposals;
    const previous=(await c.query('SELECT * FROM bimchat_direct_ownership.baselines WHERE scope_id=$1 FOR UPDATE',[h.id])).rows[0];need(previous&&previous.publication_id===h.baselinePublicationId&&previous.manifest_digest===h.baselineManifestDigest,'RENEWAL_PREVIOUS_BASELINE');
    await c.query('INSERT INTO bimchat_direct_ownership.baseline_history(scope_id,publication_id,baseline,evidence) VALUES($1,$2,$3,$4)',[h.id,previous.publication_id,JSON.stringify(previous),JSON.stringify(next.archive)]);
    // Temporary upload destinations may still receive late PUTs, but their

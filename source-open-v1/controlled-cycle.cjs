@@ -33,7 +33,12 @@ function advanceObserved(head,source,receiver,now,nextSourceEmail){
  need(head.receiverReceipt&&head.receiverReceipt.journalComplete===true&&!head.nativeVerificationStartedAt,'USER_BASELINE_RECEIPT');
  validatePostPins(head,'source',source);validatePostPins(head,'receiver',receiver);need(pins(source)===pins(receiver),'USER_BASELINE_DIVERGED');
  need(nextSourceEmail===head.sourceEmail||nextSourceEmail===head.receiverEmail,'USER_NEXT_SOURCE_REQUIRED');
- const h=structuredClone(head);h.observedHistory=h.observedHistory||[];need(Array.isArray(h.observedHistory)&&h.observedHistory.length<32,'USER_BASELINE_HISTORY_BOUND');
+ const h=structuredClone(head);h.observedHistory=h.observedHistory||[];need(Array.isArray(h.observedHistory),'USER_BASELINE_HISTORY_BOUND');
+ // Continuous checkpoints are archived transactionally by the caller before
+ // commit. Keep only the latest checkpoint in the live document, not a counter
+ // that stops normal editing after a fixed number of changes.
+ if(h.lifecycle==='drive')h.observedHistory=[];
+ else need(h.observedHistory.length<32,'USER_BASELINE_HISTORY_BOUND');
  h.ordinaryEnrollmentSourceEmail=h.ordinaryEnrollmentSourceEmail||h.sourceEmail;
  h.observedHistory.push({generation:h.generation,operationId:h.operationId,digest:h.digest,wire:h.wire,receiverReceipt:h.receiverReceipt,sourcePins:source,receiverPins:receiver});
  h.sourcePins=structuredClone(source);h.receiverPins=structuredClone(receiver);

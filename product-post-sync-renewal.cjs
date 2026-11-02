@@ -9,7 +9,7 @@ const {need}=require('./ephemeral-attempt-v1/scope.cjs');
 const bind=require('./product-baseline-binding.cjs');
 function prepare(head,{source,receiver,catalog,manifest,publicationId,now,bootstrapExpiresAt}){
  need(head.ordinaryUserChanges===true&&head.transportMode==='background-prepared'&&head.automaticEnrollmentApproved===true&&!head.cycle&&head.state==='armed'&&head.enabled===true&&head.ordinaryIdle===true&&!head.ordinaryClaim&&!head.receiverPreparedGeneration,'RENEWAL_NOT_IDLE');
- need(Number.isSafeInteger(now)&&now<head.expiresAt&&Number.isSafeInteger(bootstrapExpiresAt)&&bootstrapExpiresAt>now&&bootstrapExpiresAt<=Math.min(head.bootstrapExpiresAt,now+600000),'RENEWAL_APPROVAL_WINDOW');
+ need(Number.isSafeInteger(now)&&now<head.expiresAt&&Number.isSafeInteger(bootstrapExpiresAt)&&bootstrapExpiresAt>now&&bootstrapExpiresAt<=require('./product-session-lifetime.cjs').enrollmentLimit(head,now),'RENEWAL_APPROVAL_WINDOW');
  need(/^[a-f0-9-]{36}$/.test(publicationId)&&publicationId!==head.baselinePublicationId,'RENEWAL_PUBLICATION_ID');
  const catalogDigest=proof.hash(catalog);
  for(const [role,observation] of [['source',source],['receiver',receiver]]){
@@ -33,7 +33,8 @@ function prepare(head,{source,receiver,catalog,manifest,publicationId,now,bootst
   for(const suffix of ['Email','Build','AddinBuild'])[h['source'+suffix],h['receiver'+suffix]]=[h['receiver'+suffix],h['source'+suffix]];
  }
  // Preserve full old state separately. No old authority or operation state leaks
- // into the next bootstrap; no lifetime is extended and no key is manufactured.
+ // into the next connection. Continuous mode grants a new bounded lease only
+ // after the caller verifies both current participants and retires old keys.
  const archive={head:structuredClone(head),observations:{source:structuredClone(source),receiver:structuredClone(receiver)},catalogDigest,at:now};
  const previous={reviewDigest:head.reviewDigest,sourceEmail:head.sourceEmail,receiverEmail:head.receiverEmail};
  for(const role of ['source','receiver'])for(const suffix of ['Session','Device'])previous[role+suffix]=head[role+suffix];

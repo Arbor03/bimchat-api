@@ -26,6 +26,10 @@ module.exports=function({pool}){
     const work=(await c.query("SELECT relative_path FROM bimchat_direct_ownership.storage_work WHERE project_id=$1 AND state IN ('started','uncertain')",[h.projectId])).rows;need(!work.some(x=>x.relative_path==null||scope.group(h.centralPath,x.relative_path)),'CYCLE_STORAGE_NOT_IDLE');
     need((await c.query('SELECT 1 FROM file_locks WHERE cloud_file_id=$1 LIMIT 1',[h.fileId])).rowCount===0,'CYCLE_SYNC_NOT_IDLE');
     const evidence=h.cycleCheckpoints;need(evidence.source.action===match[2]&&evidence.receiver.action===match[2],'CHECKPOINT_ACTION_DISAGREEMENT');if(ordinary)need(evidence.source.body.nextSourceEmail===evidence.receiver.body.nextSourceEmail,'USER_NEXT_SOURCE_DISAGREEMENT');h=(ordinary?cycle.advanceObserved:cycle.advance)(h,evidence.source.body.pins,evidence.receiver.body.pins,now,body.nextSourceEmail);const history=ordinary?h.observedHistory:h.cycle.history;history[history.length-1].checkpoints=evidence;advanced=true;
+    if(ordinary&&h.lifecycle==='drive'){
+     const checkpoint=history[history.length-1];
+     await c.query('INSERT INTO bimchat_direct_ownership.baseline_history(scope_id,publication_id,baseline,evidence) VALUES($1,$2,$3,$4)',[h.id,checkpoint.operationId,JSON.stringify({kind:'ownership-checkpoint',generation:checkpoint.generation,sourcePins:checkpoint.sourcePins,receiverPins:checkpoint.receiverPins}),JSON.stringify({reviewDigest:h.reviewDigest,checkpoint})]);
+    }
     if(ordinary&&!syncRelease){h.ordinaryIdle=true;need((await c.query("UPDATE bimchat_direct_ownership.scopes SET state='released' WHERE id=$1 AND state='fenced' RETURNING id",[h.id])).rowCount===1,'ORDINARY_IDLE_SCOPE_CHANGED');}
     if(syncRelease){
      h.enabled=false;h.state='released';h.syncRelease={generation:h.generation,at:now,reason:'normal-sync',sourcePins:h.sourcePins,receiverPins:h.receiverPins};
