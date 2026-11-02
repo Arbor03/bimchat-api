@@ -27,7 +27,8 @@ module.exports = async function compose({enabled=false,app,jwt,pool,r2Client,r2C
   require('./product-ownership-quiesce.cjs').mount(collector,jwt,pool);
   require('./source-open-v1/cycle-checkpoint.cjs')({pool}).mount(collector,jwt);
   require('./source-open-v1/ordinary-claim.cjs')({pool}).mount(collector,jwt);
-  require('./product-bootstrap.cjs')({pool,review:snapshot,approvedDigest}).mount(collector,jwt);
+  const provisionInitialBaseline=require('./product-initial-baseline.cjs')({pool,r2,review:snapshot,writerInventoryDigest});
+  require('./product-bootstrap.cjs')({pool,review:snapshot,approvedDigest,provisionInitialBaseline}).mount(collector,jwt);
   require('./product-renewal.cjs')({pool}).mount(collector,jwt);
   mounted.add(app); // If the real host registration throws, discard that host.
   for(const [method,args] of registrations) app[method](...args);
