@@ -28,7 +28,7 @@ module.exports=function({pool,review,approvedDigest,provisionInitialBaseline}){
  async function ready(req){
   const b=req.body;need(b&&Object.keys(b).sort().join(',')==='addinBuild,logicalCentralPath,pid,startedTicks'&&Number.isSafeInteger(b.pid)&&b.pid>0&&typeof b.startedTicks==='string'&&/^[0-9]{17,19}$/.test(b.startedTicks),'CONNECTION_READY_BODY');
   const c=await pool.connect();try{await c.query('BEGIN');await scope.lock(c,review.projectId);const {h,role,now}=await load(c,req.user.email,true);
-   need(require('./product-session-lifetime.cjs').continuous(h)&&h.state==='bootstrap'&&!h.enabled&&b.logicalCentralPath===h.logicalCentralPath&&b.addinBuild===h[role+'AddinBuild'],'CONNECTION_READY_BINDING');
+   need(require('./product-session-lifetime.cjs').continuous(h)&&h.state==='bootstrap'&&!h.enabled&&scope.logical(b.logicalCentralPath).toLowerCase()===scope.logical(h.logicalCentralPath).toLowerCase()&&b.addinBuild===h[role+'AddinBuild'],'CONNECTION_READY_BINDING');
    // Presence is only a scheduling hint. It grants no enrollment or write access;
    // the signed native capture still verifies process, model and file identities.
    h.connectionReadiness=h.connectionReadiness||{};h.connectionReadiness[req.user.email]={...b,at:now};
@@ -39,8 +39,11 @@ module.exports=function({pool,review,approvedDigest,provisionInitialBaseline}){
   const active=h.state==='armed'&&h.enabled===true&&h.ordinaryUserChanges===true;
   if(active)need(proposal&&proposal.stage==='native'&&proposal.profile.session===h[role+'Session']&&proposal.profile.device===h[role+'Device']&&proposal.profile.keyDigest===h[role+'PublicKeyDigest'],'BOOTSTRAP_ACTIVE_BINDING');
   const out={attempt:id,role,email,generation:h.generation,renewedFrom:h.renewalPrevious?h.renewalPrevious.reviewDigest:null,renewalPins:h.renewalBaselinePins?h.renewalBaselinePins[email]:null,automaticEnrollmentApproved:true,transportMode:h.transportMode,projectId:h.projectId,fileId:h.fileId,logicalCentralPath:h.logicalCentralPath,elementUniqueId:h.elementUniqueId||null,agentBuild:h[role+'Build'],addinBuild:h[role+'AddinBuild'],planDigest:approvedDigest,lifecycle:h.lifecycle||null,bootstrapExpiresAt:require('./product-session-lifetime.cjs').enrollmentLimit(h,now),checkedAt:now,proposal:proposal||null,paired:!!(h.bootstrapProposals&&h.bootstrapProposals.source&&h.bootstrapProposals.source.stage==='native'&&h.bootstrapProposals.receiver&&h.bootstrapProposals.receiver.stage==='native'),active};
+  if(out.paired&&!active&&!h.bootstrapActivation&&!h.initialProvisioning&&['source','receiver'].some(r=>h.bootstrapProposals[r].profile.expiresAt<=now+90000)){out.paired=false;out.awaitingFreshOffer=true;}
   out.participantsReady=['source','receiver'].every(r=>{const p=h.connectionReadiness?.[h[r+'Email']];return p&&p.at<=now&&now-p.at<15000;});
   out.localReadiness=h.connectionReadiness?.[email]||null;
+  out.initialReconnectSafe=require("./product-startup-renewal.cjs").idle(h);
+  out.canReplaceExpiredOffer=require("./product-startup-renewal.cjs").available(h,role,now);
   if(out.paired&&!active){out.pairDigest=proof.hash(h.bootstrapProposals);try{need(h.bootstrapActivation==='pending'&&['running','succeeded'].includes(activationJobs.get(id)),'BOOTSTRAP_ACTIVATION_STOPPED');require('./product-bootstrap-enrollment.cjs').prepare(h,out.pairDigest,now);out.pairReady=true;}catch{out.pairReady=false;}out.approverEmail=review.approverEmail;out.accounts=[h.sourceEmail,h.receiverEmail];}
   if(active)out.runtime={reviewDigest:h.reviewDigest,expiresAt:h.expiresAt,session:h[role+'Session'],device:h[role+'Device'],keyDigest:h[role+'PublicKeyDigest']};
   out.baselineNeedsConfirmation=!active&&!h.renewalPrevious&&h.initialProvisioning?.state==='sealed'&&!(h.bootstrapConfirmations&&h.bootstrapConfirmations[role]);
@@ -56,7 +59,7 @@ module.exports=function({pool,review,approvedDigest,provisionInitialBaseline}){
    for(const peer of [p.drive,p.revit])need(Object.keys(peer).sort().join(',')==='path,pid,sha256,started,startedTicks'&&Number.isSafeInteger(peer.pid)&&peer.pid>0&&typeof peer.path==='string'&&peer.path.length<=4096&&/^[A-Za-z]:\\/.test(peer.path)&&/^[A-F0-9]{64}$/.test(peer.sha256)&&typeof peer.startedTicks==='string'&&/^[0-9]{17,19}$/.test(peer.startedTicks)&&typeof peer.started==='string'&&Number.isFinite(Date.parse(peer.started)),'BOOTSTRAP_PEER');
    proof.verify(signed,{email:req.user.email,method:'POST',path:'/drive/ownership/session-proposal',body},{email:req.user.email,sessionId:p.session,deviceId:p.device,publicJwk:p.publicJwk,publicKeyDigest:digest},approvedDigest,receivedAt);
    h.bootstrapProposals=h.bootstrapProposals||{};const prior=h.bootstrapProposals[role];
-   if(body.stage==='offer')need(!prior,'BOOTSTRAP_OFFER_ONCE');
+   if(body.stage==='offer'){if(prior)await require('./product-startup-renewal.cjs').replace(c,h,role,p,now);}
    else{need(prior&&prior.stage===(body.stage==='confirm'?'native':'offer'),'BOOTSTRAP_NATIVE_ONCE');const old=structuredClone(p),previous=structuredClone(prior.profile);delete old.native;delete previous.native;need(proof.canonical(old)===proof.canonical(previous),'BOOTSTRAP_PROFILE_CHANGED');
     need(p.native&&Object.keys(p.native).sort().join(',')==='baseline,capturedAt,mapping,pins'&&p.native.mapping&&Object.keys(p.native.mapping).sort().join(',')==='CentralLogical,CentralPhysical,DocumentPhysical,ElementId,ElementUniqueId,GroupMember,IdentityKind,OwnershipPhysical,ProjectId,RevitUser'&&p.native.mapping.IdentityKind==='project-information'&&p.native.pins&&p.native.mapping.CentralLogical===h.logicalCentralPath&&p.native.mapping.ProjectId===h.projectId&&typeof p.native.mapping.ElementUniqueId==='string'&&p.native.mapping.ElementUniqueId.length<=128&&(!h.elementUniqueId||p.native.mapping.ElementUniqueId===h.elementUniqueId),'BOOTSTRAP_NATIVE_MAPPING');require('./source-open-v1/source-policy.cjs').pins(p.native.pins);
     if(body.stage==='confirm'){
@@ -69,7 +72,7 @@ module.exports=function({pool,review,approvedDigest,provisionInitialBaseline}){
    }
    need((await c.query('INSERT INTO bimchat_direct_ownership.publication_request_nonces(nonce,review_digest,email,session_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING nonce',[signed.payload.nonce,approvedDigest,req.user.email,p.session])).rowCount===1,'BOOTSTRAP_REPLAY');
    h.bootstrapProposals[role]={stage:body.stage==='confirm'?'native':body.stage,proofStage:body.stage,profile:p,signed,receivedAt:now};
-   const paired=body.stage==='native'&&h.bootstrapProposals.source&&h.bootstrapProposals.source.stage==='native'&&h.bootstrapProposals.receiver&&h.bootstrapProposals.receiver.stage==='native';const confirmed=body.stage==='confirm'&&h.bootstrapConfirmations.source&&h.bootstrapConfirmations.receiver;if(paired||confirmed){need(typeof provisionInitialBaseline==='function','INITIAL_PROVISIONER_REQUIRED');h.bootstrapActivation='pending';}
+   const paired=body.stage==='native'&&['source','receiver'].every(r=>(h.bootstrapProposals[r]?.profile.expiresAt||0)>now+90000)&&h.bootstrapProposals.source&&h.bootstrapProposals.source.stage==='native'&&h.bootstrapProposals.receiver&&h.bootstrapProposals.receiver.stage==='native';const confirmed=body.stage==='confirm'&&h.bootstrapConfirmations.source&&h.bootstrapConfirmations.receiver;if(paired||confirmed){need(typeof provisionInitialBaseline==='function','INITIAL_PROVISIONER_REQUIRED');h.bootstrapActivation='pending';}
    await c.query('UPDATE bimchat_direct_ownership.attempts SET document=$2 WHERE id=$1',[id,JSON.stringify(h)]);await c.query('COMMIT');if(paired||confirmed)startActivation(!!confirmed);return{accepted:true,stage:body.stage,active:false};
   }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
  }
