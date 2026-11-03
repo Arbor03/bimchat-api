@@ -1,5 +1,5 @@
 {
-  "bootstrapAttemptId": "c32ef43c-8c28-4b27-881b-a72f05a7cf85",
+  "bootstrapAttemptId": "f76523f0-dff1-4e1f-b599-5d7f8f7d6702",
   "projectId": 4,
   "fileId": 370,
   "centralPath": "OwnershipTest01.rvt",
@@ -8,16 +8,16 @@
   "participants": [
     {
       "email": "arbor.p@aedbim.com",
-      "agentBuild": "B7D8B1D308319E09E5CE8BDDC7F57EBC0BC4BCDA7491F5267F83650F96FB9992",
+      "agentBuild": "7743AF9B11119E9299E2AFAD80C5AE281A0F917D909367743D3AAECAEB94B7F9",
       "addinBuild": "100552EA8786872CB6B342653D2B187AA7B6618895178B088990C41D2EB352E2"
     },
     {
       "email": "info@aedbim.com",
-      "agentBuild": "B7D8B1D308319E09E5CE8BDDC7F57EBC0BC4BCDA7491F5267F83650F96FB9992",
+      "agentBuild": "7743AF9B11119E9299E2AFAD80C5AE281A0F917D909367743D3AAECAEB94B7F9",
       "addinBuild": "100552EA8786872CB6B342653D2B187AA7B6618895178B088990C41D2EB352E2"
     }
   ],
-  "writerInventoryDigest": "40DB60F148BCE9D0865BB6C2868768710165BF39CB6655CB35256AF74A16041C",
+  "writerInventoryDigest": "603800F4298DE8F07BF581DDD14713DAAFDE6089F691CBEC26CE8BAD44C47FEA",
   "automaticEnrollmentApproved": true,
   "initialBaselineApproved": true,
   "transportMode": "background-prepared",
