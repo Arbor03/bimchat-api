@@ -10,6 +10,11 @@ module.exports=function({rawPool,r2,signUpload}){
   const matches=(await scope.scopes(c,project)).filter(s=>scope.group(s.central_path,path));need(matches.length<=1,'UPLOAD_RECEIPT_AMBIGUOUS_SCOPE');
   if(!matches.length){need(!String(req.body.b2Key||'').startsWith('direct-upload/'),'UPLOAD_RECEIPT_SCOPE_REQUIRED');return null;}
   const s=matches[0];need(['released','staged'].includes(s.state),'UPLOAD_RECEIPT_FENCED');
+  const ownership=['users.dat','editingperms.dat','editingdeltas.dat','editingrequests.dat','worksetperms.dat'].some(name=>scope.equal(path,s.central_path.replace(/\.rvt$/i,'')+'_backup/'+name));
+  if(ownership){
+   const exists=(await c.query("SELECT to_regclass('bimchat_direct_ownership.model_streams') present")).rows[0]?.present;
+   if(exists)need(!(await c.query('SELECT 1 FROM bimchat_direct_ownership.model_streams WHERE project_id=$1 AND file_id=$2',[s.project_id,s.file_id])).rowCount,'OWNERSHIP_AGENT_ONLY');
+  }
   need((await c.query('SELECT 1 FROM project_members WHERE project_id=$1 AND user_email=$2 FOR SHARE',[project,req.user.email])).rowCount===1,'UPLOAD_RECEIPT_MEMBERSHIP');
   need(Number.isSafeInteger(req.body.fileSize)&&req.body.fileSize>=0&&req.body.fileSize<=64*1024*1024,'UPLOAD_RECEIPT_SIZE');return s;
  }

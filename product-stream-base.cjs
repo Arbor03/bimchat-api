@@ -1,0 +1,6 @@
+'use strict';
+const {need}=require('./scoped-api-v11/scope.cjs'),crypto=require('node:crypto');const block=262144;
+async function capture(c,file,name,pin,input){let pending=Buffer.alloc(0),index=0,length=0;const sha=crypto.createHash('sha256');async function save(bytes){sha.update(bytes);length+=bytes.length;await c.query('INSERT INTO bimchat_direct_ownership.stream_base_chunks(file_id,file_name,chunk_index,bytes) VALUES($1,$2,$3,$4)',[file,name,index++,bytes]);}
+ for await(const raw of input){for(let at=0;at<raw.length;){const n=Math.min(block-pending.length,raw.length-at);pending=Buffer.concat([pending,raw.subarray(at,at+n)]);at+=n;if(pending.length===block){await save(pending);pending=Buffer.alloc(0);}}}if(pending.length)await save(pending);need(length===pin.size&&sha.digest('hex').toUpperCase()===pin.sha256,'STREAM_BASELINE_R2_CONTENT');}
+async function* read(c,file,name,length){for(let index=0,at=0;at<length;index++){const row=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_base_chunks WHERE file_id=$1 AND file_name=$2 AND chunk_index=$3',[file,name,index])).rows[0];need(row&&row.bytes.length===Math.min(block,length-at),'STREAM_DELTA_BASELINE');yield row.bytes;at+=row.bytes.length;}}
+module.exports={capture,read};

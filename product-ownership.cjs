@@ -11,7 +11,15 @@ module.exports = async function compose({enabled=false,app,jwt,pool,r2Client,r2C
   need(review && proof.hash(review)===approvedDigest && review.writerInventoryDigest===writerInventoryDigest && /^[A-F0-9]{64}$/.test(writerInventoryDigest),'PRODUCT_OWNERSHIP_REVIEW');
   need(r2Client && r2Client.config && typeof r2Client.config.maxAttempts==='function' && await r2Client.config.maxAttempts()===1 && bucket==='bimchat-files','PRODUCT_OWNERSHIP_R2');
   const snapshot=JSON.parse(proof.canonical(review));
-  const r2=require('./ephemeral-attempt-v1/r2-content.cjs')({client:r2Client,bucket,...r2Commands});
+  const r2=require(snapshot.participantMode==='independent'?'./product-r2-streaming.cjs':'./ephemeral-attempt-v1/r2-content.cjs')({client:r2Client,bucket,...r2Commands});
+  if(snapshot.participantMode==='independent'){
+    // Explicitly reviewed replacement path, never simultaneous paired/stream
+    // mutation handlers. Database migration and baseline provisioning precede it.
+    const baseline=require('./product-stream-baseline.cjs')({pool,r2,review:snapshot,writerInventoryDigest});
+    const stream=require('./product-model-stream-http.cjs')({pool,review:snapshot,approvedDigest,baseline,r2});
+    stream.mount(app,jwt);mounted.add(app);
+    return Object.freeze({enabled:true,mode:'independent',routeCount:17,stream});
+  }
   const source=require('./source-open-v1/source-transactions.cjs')({pool,
     verifySourceAndStorage:require('./source-open-v1/source-context.cjs')({reviewedInventoryDigest:writerInventoryDigest})});
   const ingest=require('./source-open-v1/observation-ingest.cjs')({pool});
