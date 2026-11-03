@@ -7,7 +7,10 @@ function verify(proof,request,participant,reviewDigest,now=Date.now()){
  need(p&&Object.keys(p).sort().join('|')===['schema','email','session','device','method','path','bodyHash','nonce','at','reviewDigest'].sort().join('|'),'DEVICE_PROOF_FIELDS');
  need(p.schema===1&&p.email===request.email&&p.email===participant.email&&p.session===participant.sessionId&&p.device===participant.deviceId,'DEVICE_PROOF_IDENTITY');
  need(p.method===request.method&&p.path===request.path&&p.bodyHash===hash(request.body)&&p.reviewDigest===reviewDigest,'DEVICE_PROOF_REQUEST');
- need(Number.isSafeInteger(p.at)&&now>=p.at&&now-p.at<=10000&&/^[a-f0-9-]{36}$/i.test(p.nonce),'DEVICE_PROOF_FRESH');
+ // Bounded clock uncertainty, not an exemption from freshness or replay checks.
+ need(Number.isSafeInteger(p.at)&&Number.isSafeInteger(now)&&/^[a-f0-9-]{36}$/i.test(p.nonce),'DEVICE_PROOF_TIME_FORMAT');
+ need(p.at-now<=5000,'DEVICE_PROOF_FUTURE');
+ need(now-p.at<=10000,'DEVICE_PROOF_EXPIRED');
  const key=crypto.createPublicKey({key:participant.publicJwk,format:'jwk'});
  need(!participant.publicJwk.d&&key.asymmetricKeyType==='rsa'&&key.asymmetricKeyDetails.modulusLength>=3072,'DEVICE_PROOF_KEY');
  need(crypto.createHash('sha256').update(key.export({type:'spki',format:'der'})).digest('hex').toUpperCase()===participant.publicKeyDigest,'DEVICE_PROOF_KEY_PIN');
