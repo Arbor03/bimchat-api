@@ -27,6 +27,7 @@ module.exports=function({rawPool,r2,signUpload}){
  }
  async function confirm(c,req){const s=await selected(c,req);if(!s)return null;throw Object.assign(Error('UPLOAD_CONFIRM_PROTOCOL_REQUIRED'),{status:409});}
  async function finalize(c,req,s,r,prior,sealed){
+  const b=req.body;
   need(sealed.contentVerified===true&&sealed.size===Number(r.expected_size)&&sealed.key!==r.upload_key,'UPLOAD_RECEIPT_CONTENT');pins.validate(sealed);
   await pins.insert(c,sealed);await pins.complete(c,sealed);
   let fileId,version;
