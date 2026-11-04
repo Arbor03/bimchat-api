@@ -3,7 +3,7 @@ const scope=require('./scope.cjs');
 // Explicit catalog of existing routes. Unknown future routes require coverage review.
 function policy(method,url){
  if(method==='get'&&url==='/drive/files/:projectId')return {type:'list',list:true};
- if(method==='post'&&['/drive/files/upload-url','/drive/files/confirm-upload'].includes(url))return {type:'upload',legacyUpload:true};
+ if(method==='post'&&['/drive/files/upload-url','/drive/files/confirm-upload'].includes(url))return {type:'upload',legacyUpload:true,splitUpload:url==='/drive/files/confirm-upload'};
  if(/^\/drive\/files\/:fileId(?:\/|$)/.test(url))return {type:'cloud',external:method==='delete',kind:method==='delete'?'cloud-delete':undefined};
  if(method!=='get'&&/^\/projects\/:id(?:\/|$)/.test(url)){const deletesProject=method==='delete'&&url==='/projects/:id';return {type:'project',external:deletesProject,kind:deletesProject?'project-delete':undefined};}
  if(method!=='get'&&/^\/folders\/:id$/.test(url))return {type:'folder'};

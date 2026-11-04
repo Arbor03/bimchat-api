@@ -776,6 +776,10 @@ app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
         }
 
         if (ownershipUploads) {
+            if (req.body.confirmProtocol === 2 && String(b2Key).startsWith('direct-upload/')) {
+                const result = await ownershipUploads.confirmManaged(req);
+                return res.status(result.status).json(result.body);
+            }
             const scoped = await ownershipUploads.confirm(pool, req);
             if (scoped) return res.json(scoped);
         }

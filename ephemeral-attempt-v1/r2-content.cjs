@@ -28,18 +28,19 @@ module.exports = function ({client,bucket,HeadObjectCommand,GetObjectCommand,Put
     need(cap && Number.isSafeInteger(cap.project_id) && cap.project_id>0 && typeof cap.object_key==='string' && cap.object_key.length>0 && typeof reserve==='function','R2_SEAL_CONTEXT');
     let timer,controller;
     if(cap.deadline!==undefined){need(Number.isSafeInteger(cap.deadline)&&cap.deadline>Date.now()&&cap.deadline-Date.now()<=30000,'R2_DEADLINE');controller=new AbortController();timer=setTimeout(()=>controller.abort(),Math.max(1,cap.deadline-Date.now()));}
+    const progress=async phase=>{if(typeof cap.progress==='function')await cap.progress(phase);};
     const signal=controller&&controller.signal,check=()=>need(!signal||(!signal.aborted&&Date.now()<cap.deadline),'R2_DEADLINE');
     try{
-    check();const head=await client.send(new HeadObjectCommand({Bucket:bucket,Key:cap.object_key}),signal?{abortSignal:signal}:undefined);
-    const body=await read(cap.object_key,head.ETag,signal);check();
+    await progress('source-head');check();const head=await client.send(new HeadObjectCommand({Bucket:bucket,Key:cap.object_key}),signal?{abortSignal:signal}:undefined);
+    await progress('source-read');const body=await read(cap.object_key,head.ETag,signal);check();
     // Reject mismatched initial native/catalog content before reserving or PUT.
     if(cap.expected)need(cap.expected.sha256===hash(body)&&cap.expected.size===body.length,'R2_EXPECTED_CONTENT_CHANGED');
     const key='direct-sealed/'+cap.project_id+'/'+crypto.randomUUID();
     const record={provider:'r2',key,sha256:hash(body),size:body.length,sourceKey:cap.object_key,sourceEtag:head.ETag};
     need(await reserve(Object.freeze({...record}))===true,'R2_DURABLE_RESERVATION_REQUIRED');
-    check();const put=await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:body,ContentLength:body.length,ContentType:'application/octet-stream',CacheControl:'no-store',IfNoneMatch:'*'}),signal?{abortSignal:signal}:undefined);
+    await progress('sealed-put');check();const put=await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:body,ContentLength:body.length,ContentType:'application/octet-stream',CacheControl:'no-store',IfNoneMatch:'*'}),signal?{abortSignal:signal}:undefined);
     const pin={...record,etag:put.ETag};
-    await readVerified(pin,signal);check();
+    await progress('sealed-verify');await readVerified(pin,signal);check();
     // ETag is a conditional validator, NOT a version ID or SHA-256. This result
     // intentionally cannot satisfy v9's immutable/version contract.
     return {...pin,contentVerified:true,immutable:false};
