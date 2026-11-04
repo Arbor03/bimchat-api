@@ -29,5 +29,19 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir()}){
   }return body;
  }finally{c.release();await fsp.rm(dir,{recursive:true,force:true});}}
  async function get(a,b){const c=await pool.connect();try{const op=(await c.query('SELECT payload FROM bimchat_direct_ownership.model_stream_operations WHERE file_id=$1 AND operation_id=$2',[a.fileId,b.operationId])).rows[0];need(op?.payload?.patch?.Schema===3,'STREAM_DELTA_NOT_COMMITTED');const f=op.payload.patch.Files.find(f=>f.Name===b.name);need(f&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(f.DeltaLength/block),'STREAM_DELTA_CHUNK');const part=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[a.fileId,b.operationId,b.name,b.index])).rows[0];need(part,'STREAM_DELTA_INCOMPLETE');return {operationId:b.operationId,name:b.name,index:b.index,bytes:part.bytes.toString('base64')};}finally{c.release();}}
- return {begin,put,verified,get};
+
+ async function resume(a,b){const c=await pool.connect();let dir;try{
+  await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  const p=(await c.query('SELECT epoch,applied_sequence,local_pins FROM bimchat_direct_ownership.model_stream_participants WHERE file_id=$1 AND email=$2 AND device_id=$3',[a.fileId,a.email,a.deviceId])).rows[0];
+  if(!p){need(!b.name,'STREAM_RESUME_PARTICIPANT');await c.query('ROLLBACK');return {existing:false};}
+  const sequence=Number(p.applied_sequence),pins=p.local_pins;
+  if(!b.name){await c.query('ROLLBACK');return {existing:true,epoch:p.epoch,sequence,pins};}
+  need(b.epoch===p.epoch&&b.sequence===sequence&&b.pinsDigest===proof.hash(pins),'STREAM_RESUME_CHANGED');
+  const pin=pins.files.find(f=>f.name===b.name);need(pin&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(pin.length/block),'STREAM_RESUME_CHUNK');
+  let bytes;
+  if(b.name==='users.dat')bytes=await users.chunk(c,a.fileId,pins.users,b.index);
+  else{dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-resume-'));const file=await baseFile(c,a.fileId,b.name,sequence,dir),h=await fsp.open(file,'r');try{need((await h.stat()).size===pin.length&&await codec.hash(h,pin.length)===pin.sha256,'STREAM_RESUME_PIN');bytes=Buffer.alloc(Math.min(block,pin.length-b.index*block));let at=0;while(at<bytes.length){const r=await h.read(bytes,at,bytes.length-at,b.index*block+at);need(r.bytesRead>0,'STREAM_RESUME_SHORT');at+=r.bytesRead;}}finally{await h.close();}}
+  await c.query('ROLLBACK');return {epoch:p.epoch,sequence,name:b.name,index:b.index,bytes:bytes.toString('base64')};
+ }finally{try{await c.query('ROLLBACK');}finally{c.release();if(dir)await fsp.rm(dir,{recursive:true,force:true});}}}
+ return {begin,put,verified,get,resume};
 };

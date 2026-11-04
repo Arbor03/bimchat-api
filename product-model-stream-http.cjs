@@ -45,7 +45,8 @@ module.exports=function({pool,review,approvedDigest,baseline,r2}){
    return {...auth,fileId:config.fileId,keyDigest:participant.publicKeyDigest};
   }finally{c.release();}
  }
- async function handle(req,action){const auth=await authenticate(req,action==='join'||(action.startsWith('users-')&&!!req.body?.bootstrap));const b=req.body;
+ async function handle(req,action){const auth=await authenticate(req,action==='join'||((action.startsWith('users-')||action==='resume')&&!!req.body?.bootstrap));const b=req.body;
+  if(action==='resume'){need(b.bootstrap&&Object.keys(b).sort().join(',')===(b.name?'bootstrap,epoch,fileId,index,name,pinsDigest,sequence':'bootstrap,fileId'),'STREAM_RESUME_BODY');return deltas.resume(auth,b);}
   if(action==='users-known'){const c=await pool.connect();try{try{await users.known(c,auth.fileId,b.reference);return {known:true};}catch(e){if(e.message==='USERS_UNVERIFIED')return {known:false};throw e;}}finally{c.release();}}
   if(action==='users-put'){need(typeof b.bytes==='string'&&b.bytes.length<=349528,'USERS_CHUNK');const bytes=Buffer.from(b.bytes,'base64');need(bytes.toString('base64')===b.bytes,'USERS_ENCODING');return users.upload(auth.fileId,b.reference,b.index,bytes);}
   if(action==='users-seal')return users.finish(auth.fileId,b.reference);
@@ -80,7 +81,7 @@ module.exports=function({pool,review,approvedDigest,baseline,r2}){
   app.get('/drive/ownership/stream/plan',jwt,async(req,res)=>{try{res.set('Cache-Control','no-store');res.json(await plan(req.user.email));}catch{res.status(409).json({code:'STREAM_PLAN_UNAVAILABLE'});}});
   // Normal Sync never replaces the agent's ownership state. The earlier
   // Sync-baseline/status work is retained as history, not mounted in this mode.
-  for(const action of ['delta-begin','delta-put','delta-get','delta-submit','users-known','users-put','users-seal','users-get','join','submit','submit-chunked','chunk-put','operation-chunk','image-begin','image-put','image-get','image-submit','status','pending','acknowledge','baseline-file'])app.post('/drive/ownership/stream/'+action,jwt,async(req,res)=>{try{res.set('Cache-Control','no-store');res.json(await handle(req,action));}catch(e){
+  for(const action of ['resume','delta-begin','delta-put','delta-get','delta-submit','users-known','users-put','users-seal','users-get','join','submit','submit-chunked','chunk-put','operation-chunk','image-begin','image-put','image-get','image-submit','status','pending','acknowledge','baseline-file'])app.post('/drive/ownership/stream/'+action,jwt,async(req,res)=>{try{res.set('Cache-Control','no-store');res.json(await handle(req,action));}catch(e){
    const reason=typeof e.message==='string'&&/^(STREAM|USERS|DEVICE_PROOF)_[A-Z_]+$/.test(e.message)?e.message:'STREAM_REQUEST_FAILED';
    res.status(409).json({code:reason});
   }});
