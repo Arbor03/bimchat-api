@@ -2,9 +2,9 @@
   "participantMode": "independent",
   "sessionLifetimeMs": 1200000,
   "projectId": 4,
-  "fileId": 370,
-  "centralPath": "OwnershipTest01.rvt",
-  "logicalCentralPath": "U:\\Test06\\OwnershipTest01.rvt",
+  "fileId": 487,
+  "centralPath": "OwnershipTest02_Isolated.rvt",
+  "logicalCentralPath": "U:\\Test06\\OwnershipTest02_Isolated.rvt",
   "participants": [
     {
       "email": "arbor.p@aedbim.com",
