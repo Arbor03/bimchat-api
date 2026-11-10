@@ -1,0 +1,294 @@
+[
+  {
+    "path": "ephemeral-attempt-v1/content-pins.cjs",
+    "sha256": "49BE25C31DD791D9913BD717C046BDB3181EC854E454FD2FD2EB1062D04EF5D7"
+  },
+  {
+    "path": "ephemeral-attempt-v1/device-proof.cjs",
+    "sha256": "EEA562591E8B709A1593F9B7195351F0C37FDDBE4E366A6C4804D64C2BE45BF8"
+  },
+  {
+    "path": "ephemeral-attempt-v1/ephemeral-authorization.cjs",
+    "sha256": "33B81705BF2414D5C83EB9647EAE94756F11AADADC3AC7440D26E7F23E372364"
+  },
+  {
+    "path": "ephemeral-attempt-v1/post-sync.cjs",
+    "sha256": "E8266E7CA045544C35AC5F561F37C51E2DCFC7AA19115848660F41A6E2B0C2E5"
+  },
+  {
+    "path": "ephemeral-attempt-v1/publication-manifest.cjs",
+    "sha256": "ADB0E74E6DD3F5C048F1B9BE5E27D1EC283E3243773C8026E852BCBAFBCB5AF9"
+  },
+  {
+    "path": "ephemeral-attempt-v1/publication.cjs",
+    "sha256": "AE00F340D1F3FFCDBD254198792076D4FD98CA305E7B23FC516474D651BDAF5F"
+  },
+  {
+    "path": "ephemeral-attempt-v1/r2-content.cjs",
+    "sha256": "A527E821B7F306B83C515F73AA0686FBFFB2539E7654066A86FF58D881AEA46C"
+  },
+  {
+    "path": "ephemeral-attempt-v1/recovery-readback.cjs",
+    "sha256": "0CDB9691A626FBFF89E54970B60A0CC918E346612E89CBC25F718EBDB26D3E34"
+  },
+  {
+    "path": "ephemeral-attempt-v1/scope.cjs",
+    "sha256": "879A9368CE0A89984C87B50561B64CC256BAECBB34D5FD0884AE83821793F7D8"
+  },
+  {
+    "path": "fragWorker.js",
+    "sha256": "61E90598FA054CE201DE4B39BB67B819D67013A9E596C768D69A01703374E7F7"
+  },
+  {
+    "path": "index.js",
+    "sha256": "A4F860FB0BB9CCB1ECF510932DF441E06D5417ABCE3558695C390704DB470A32"
+  },
+  {
+    "path": "product-baseline-binding.cjs",
+    "sha256": "5224DC4D2CA24BCADC5B6245072EFDA5BDFA1B98E842B959B6D1BEA6E1B7F071"
+  },
+  {
+    "path": "product-bootstrap-enrollment.cjs",
+    "sha256": "EE09695711E8B453AC967B26CC000209AF93D8E6C544744752AD2A48F5F5F4E8"
+  },
+  {
+    "path": "product-bootstrap.cjs",
+    "sha256": "FF2E815DE68FE4CA5C26D661B39CB171AC6D8A05B5D28004D6BEA6DF586542C7"
+  },
+  {
+    "path": "product-byte-delta.cjs",
+    "sha256": "6A0C35CCBFA32C4346638FA75133CE8E66F13A63D7C126BA077631DE0B31CEC3"
+  },
+  {
+    "path": "product-initial-baseline.cjs",
+    "sha256": "1B7F3BF7E78AA408DEDE3B362CD05D2657CE542799794A5F8E24ADC947FFA393"
+  },
+  {
+    "path": "product-model-stream-http.cjs",
+    "sha256": "AF9D22939D5409B242E41ECEAC889CA9800128CEE024834ED262B76672BAC768"
+  },
+  {
+    "path": "product-model-stream-policy.cjs",
+    "sha256": "7312BAFFFC01D1EA74DD9B0FF7BD10F69D992EC7E3B34DBC795836AA3252D19F"
+  },
+  {
+    "path": "product-model-stream-queue.cjs",
+    "sha256": "260B58D65D5750A6E1CFEFBC5EBBF354543FD47C48F2B9EB8012DDEEF3954CFC"
+  },
+  {
+    "path": "product-model-stream.cjs",
+    "sha256": "BB62BDEF4E8B4A85EE26F1B7867A5D99777B283D4AE17774D05499FED597AEA6"
+  },
+  {
+    "path": "product-ownership-quiesce.cjs",
+    "sha256": "89E3CDD35C09A8F83EEF9639B13BF839A194EBE33769E716CFBEF52B87B7F45D"
+  },
+  {
+    "path": "product-ownership.cjs",
+    "sha256": "21BD5B5BD157D2A564E9ADD530EECA094188B7A95E97C2D539F72E97A043C904"
+  },
+  {
+    "path": "product-post-sync-renewal.cjs",
+    "sha256": "7BCE5E92D8B57B5F12312E9D41FAA44E765EC4585A340D7416EE3799233CCBEC"
+  },
+  {
+    "path": "product-r2-streaming.cjs",
+    "sha256": "565F1DD4F6C22048EBDE4121DD84A54F9BDF6CE6D4C6849288401CC9711A275D"
+  },
+  {
+    "path": "product-recovery-status.cjs",
+    "sha256": "ACDE61DF153BA2BFFBBE2A5832C7D878FAE0020BCF67E0340FFA783123B26BCE"
+  },
+  {
+    "path": "product-renewal.cjs",
+    "sha256": "48DFB8860E21CD8B1C6A725E0B9F989DF9B398D8856A7558E33A72DDA4568E48"
+  },
+  {
+    "path": "product-session-lifetime.cjs",
+    "sha256": "9D313D560843AA0589798C55D383D8C40B2B8302DA93AC429D971805BE0C58F6"
+  },
+  {
+    "path": "product-session-reconnect.cjs",
+    "sha256": "EE636C190CE2C2CEC9F4CC23E2638BE007494EE7F67711133AECF206E10702A8"
+  },
+  {
+    "path": "product-session-registration.cjs",
+    "sha256": "75165953BE3EF23A5DD7C2BC5ED4A14E4FD3564560DF5A741B890FB0D3442C13"
+  },
+  {
+    "path": "product-startup-renewal.cjs",
+    "sha256": "358D52DE631DF549320CE9AE3B8414C7C9F739FC1D0AAF4873F5774E89787E61"
+  },
+  {
+    "path": "product-stream-base.cjs",
+    "sha256": "5897F0AD2266F98DBCEDADDCD94911D5DEE2D54AD195439C2E036C947F1B8211"
+  },
+  {
+    "path": "product-stream-baseline.cjs",
+    "sha256": "57A44A29175F53628A87D9DDFAAFC8D68C899962691E532D476972E0C14A22A6"
+  },
+  {
+    "path": "product-stream-chunks.cjs",
+    "sha256": "E71B65A88247742F249B5718CD138B2812102C9F34DF04BAC29D55652E33869A"
+  },
+  {
+    "path": "product-stream-deltas.cjs",
+    "sha256": "EBE710EDFB0BDC260A94A7A9553FDC763500DE6773F5E2CC5B7EC47D13B306C8"
+  },
+  {
+    "path": "product-stream-images.cjs",
+    "sha256": "883DBCCD19C72BD34EBF199AEF47A161E8117B23746E9E1D7BC055EEF1F89378"
+  },
+  {
+    "path": "product-stream-users.cjs",
+    "sha256": "61DA09B8CCF28E2594667DAE87F586F2032FE7A14C7E0481939F518452E6AE9F"
+  },
+  {
+    "path": "product-upload-receipts.cjs",
+    "sha256": "425B6F7253F809205426AC393FE18E5BD88F9DDF42C214B8C1EDF819956809D1"
+  },
+  {
+    "path": "product-upload-seal-jobs.cjs",
+    "sha256": "CAA9F8A4A0FC95EE48F566D8FD996C264F2C364F56569576634AB149FCE01C59"
+  },
+  {
+    "path": "product-user-table.cjs",
+    "sha256": "26EA21FEFD236088AF414E6671DFC555E2E6C6FDD736374446A0DFE78E46BD37"
+  },
+  {
+    "path": "product-writer-fences.cjs",
+    "sha256": "D48FF78C0B621235963A24F61BF6A565F51ABDA59A8E5704B69F4939C0BE3493"
+  },
+  {
+    "path": "receiver-open-v1/evidence-adapters.cjs",
+    "sha256": "0BECBA01BD9D588F99AFEA7C94B27C8B47AC6DD1350FBCDF7A0415056FC8C945"
+  },
+  {
+    "path": "receiver-open-v1/native-verification.cjs",
+    "sha256": "DEBC9097A5366A3594AE6EE7F7348CA3AB140EA0EF862D51CD08CF17AC39FAEE"
+  },
+  {
+    "path": "receiver-open-v1/receiver-auth.cjs",
+    "sha256": "F648979E33355B92BABBB907C10210E806D52C41BC28F0846D8381121C0A7D7A"
+  },
+  {
+    "path": "receiver-open-v1/receiver-compose.cjs",
+    "sha256": "50CD89462C1B0FF41FD821DFBF2C8C85878F349F3C3415D05AD0F14ACED8992A"
+  },
+  {
+    "path": "receiver-open-v1/receiver-content-proof.cjs",
+    "sha256": "DCBDD384AF56F9400253A7B5AB95E3BD95B61F7908F825FA696B75EB06C6BC48"
+  },
+  {
+    "path": "receiver-open-v1/receiver-pending.cjs",
+    "sha256": "4057EF8F52004BFBDCA3325F477E491F5CEB50B25C568E8DD6B6A1DD372E7977"
+  },
+  {
+    "path": "receiver-open-v1/receiver-receipt.cjs",
+    "sha256": "60377038718EB84821D4983937C01D385B02E34A10D261C7F247558EA5E55BE8"
+  },
+  {
+    "path": "receiver-open-v1/receiver-signed-routes.cjs",
+    "sha256": "D0A57B469FF89A95A223DC4387CD03F1794F882E56257E612B69ED3C7247F2F7"
+  },
+  {
+    "path": "receiver-open-v1/receiver-transactions.cjs",
+    "sha256": "03EE68239F47C110F41A72443D29B148D2496E1BD78E1A48A232F566407298E0"
+  },
+  {
+    "path": "scoped-api-v11/baseline-r2.cjs",
+    "sha256": "9075AA06F7C52C9647E38812849273FC0F9C939D6801DA48961CA4FA6234D70E"
+  },
+  {
+    "path": "scoped-api-v11/catalog-rekey.cjs",
+    "sha256": "1C856C97E839B01712F228A83F4BB6F30F6D2F5FCC7CEFB2E7C06BC34408DE75"
+  },
+  {
+    "path": "scoped-api-v11/content-pins.cjs",
+    "sha256": "49BE25C31DD791D9913BD717C046BDB3181EC854E454FD2FD2EB1062D04EF5D7"
+  },
+  {
+    "path": "scoped-api-v11/coordinator.cjs",
+    "sha256": "0FBFE9A44E90F56D7E165DB1F16F063E79578F0FCB7BE873A7820C57F7ED6D0F"
+  },
+  {
+    "path": "scoped-api-v11/direct/protocol.cjs",
+    "sha256": "7C42F51D1B35104899C5DAB982203B382B433D13104675B9F3007F4DFD91DFEA"
+  },
+  {
+    "path": "scoped-api-v11/handler-bridge.cjs",
+    "sha256": "80311B6287AEABA925060E7E5DE681F307E9079C43CD8C74CFCC7CF362E1DB11"
+  },
+  {
+    "path": "scoped-api-v11/install-handlers.cjs",
+    "sha256": "D9B46E92F9A05A0B8B1345E42935CF2A828BD8FD5858B8F102F7CA8182824265"
+  },
+  {
+    "path": "scoped-api-v11/scope.cjs",
+    "sha256": "372C37A63D60E58B6DA96AD174D3C4A1764137E19BFAE5F88F7A5CD47A477F52"
+  },
+  {
+    "path": "scoped-api-v11/sealed-guard.cjs",
+    "sha256": "F1BBAFA03414B46C41E12C7C84BD6BCA049AB4E77C4D19BA16B3C7CD9A76A21C"
+  },
+  {
+    "path": "scoped-api-v11/worker-lifecycle.cjs",
+    "sha256": "DDD417E946360A25BF420C8A5695FD765D5974FF462F86DE153AB94D36B8EBE7"
+  },
+  {
+    "path": "source-open-v1/arrival-order.cjs",
+    "sha256": "966625E5096109A949C8E1C7647454861E348AEB6AAEBA6CBFC211BA40661036"
+  },
+  {
+    "path": "source-open-v1/attempt-status.cjs",
+    "sha256": "A4F10C262086F3AB2C5C5D889D59C6ECD22670D7C8737CD09F1D9319D33765BE"
+  },
+  {
+    "path": "source-open-v1/controlled-cycle.cjs",
+    "sha256": "C1B9A3DC47C51DDA33A2C57DF713C9993800488509E576C1B8519E2C8EAF9D3F"
+  },
+  {
+    "path": "source-open-v1/cycle-checkpoint.cjs",
+    "sha256": "D5595D3414B7838875838BA1B43C3E9C1EDC1D72E1DF9963CE467AC524E5D034"
+  },
+  {
+    "path": "source-open-v1/native-grant.cjs",
+    "sha256": "CDDC1B7907938F3CC0A25BEB5DA3C315DD88243F915B00AE4B007D36EF6795C1"
+  },
+  {
+    "path": "source-open-v1/observation-ingest.cjs",
+    "sha256": "BDFF066CC267F26682F6989B54654EA21440399092D9BE172FD16768FB13D505"
+  },
+  {
+    "path": "source-open-v1/open-evidence.cjs",
+    "sha256": "539BB64A12D8983E58110573C3826AC47C32395AA916E25A0DAC7888C759A304"
+  },
+  {
+    "path": "source-open-v1/ordinary-claim.cjs",
+    "sha256": "0720B63CCFE36D570DFED3AB703E4D9D021DDE03F3A2D40464CDE00956D89043"
+  },
+  {
+    "path": "source-open-v1/post-sync-reconciliation.cjs",
+    "sha256": "85E28E13BA869313B377021F326499BF62A4099538E0A6B2DCB16255F45FB262"
+  },
+  {
+    "path": "source-open-v1/protocol.cjs",
+    "sha256": "E5136E92AFDD02DD5485E426AF5AE9F76653F1D12CAD0C9C0C4DE589FF4361C5"
+  },
+  {
+    "path": "source-open-v1/source-context.cjs",
+    "sha256": "7821C0EA920AF0651A0A8B73268FC7B507A6667B18C4F523BE444D297773A728"
+  },
+  {
+    "path": "source-open-v1/source-fence-evidence.cjs",
+    "sha256": "EBCCF151302D511336B86F158248A9D4F7CD5B4A7DD3A543D8384CB392781667"
+  },
+  {
+    "path": "source-open-v1/source-policy.cjs",
+    "sha256": "A7B62530E1DA08276D77C973B2CDF263784246E7777AE8126C8714A186CAFB84"
+  },
+  {
+    "path": "source-open-v1/source-transactions.cjs",
+    "sha256": "16956265113CD1E900A5FAE7D9569419E708B23D6646D352028C9DA09519D846"
+  }
+]
