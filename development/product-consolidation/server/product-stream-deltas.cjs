@@ -1,0 +1,65 @@
+'use strict';
+// Schema 3 uses the existing immutable operation/chunk tables. Chunks contain
+// exact byte-range records, never full postimages. Full content is reconstructed
+// only in private scratch storage from the sealed initial base + committed log.
+const fs=require('node:fs'),fsp=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+const proof=require('./ephemeral-attempt-v1/device-proof.cjs'),protocol=require('./scoped-api-v11/direct/protocol.cjs'),codec=require('./product-byte-delta.cjs');
+const {need}=require('./scoped-api-v11/scope.cjs');const block=262144;
+module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nativeBaseline=null,splitLog=null}){
+ const enrollment=require('./product-native-enrollment.cjs');
+ if(nativeBaseline)enrollment.validate(nativeBaseline,nativeModel);
+ const schema=nativeModel===null?3:4;
+ const validatePatch=p=>nativeModel===null?protocol.validateStream(p):protocol.validateNativeStream(p,nativeModel);
+ if(nativeModel!==null)protocol.nativeNames(nativeModel);
+ const users=require('./product-stream-users.cjs')({pool});
+ async function row(c,a,id){const r=(await c.query('SELECT * FROM bimchat_direct_ownership.stream_image_uploads WHERE file_id=$1 AND operation_id=$2',[a.fileId,id])).rows[0];need(r&&r.email===a.email&&r.device_id===a.deviceId&&r.document.patch.Schema===schema,'STREAM_DELTA_BINDING');return r;}
+ async function begin(a,body){validatePatch(body.patch);need(body.patch.Schema===schema&&body.patch.SourceSession===a.sessionId,'STREAM_DELTA_SCHEMA');const digest=proof.hash(body),c=await pool.connect();try{await c.query('INSERT INTO bimchat_direct_ownership.stream_image_uploads(file_id,operation_id,email,device_id,document,digest) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[a.fileId,body.patch.OperationId,a.email,a.deviceId,body,digest]);need((await row(c,a,body.patch.OperationId)).digest===digest,'STREAM_OPERATION_ID_REUSED');return {prepared:true,operationId:body.patch.OperationId};}finally{c.release();}}
+ async function put(a,b){const c=await pool.connect();try{const r=await row(c,a,b.operationId),f=r.document.patch.Files.find(f=>f.Name===b.name);need(f&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(f.DeltaLength/block)&&typeof b.bytes==='string'&&b.bytes.length<=349528,'STREAM_DELTA_CHUNK');const bytes=Buffer.from(b.bytes,'base64');need(bytes.toString('base64')===b.bytes&&bytes.length===Math.min(block,f.DeltaLength-b.index*block),'STREAM_DELTA_CHUNK');await c.query('INSERT INTO bimchat_direct_ownership.stream_image_chunks(file_id,operation_id,file_name,chunk_index,bytes) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[a.fileId,b.operationId,b.name,b.index,bytes]);const old=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[a.fileId,b.operationId,b.name,b.index])).rows[0];need(old&&old.bytes.equals(bytes),'STREAM_DELTA_CHUNK_CHANGED');return {stored:true,index:b.index};}finally{c.release();}}
+ async function chunks(c,file,id,f,target){const out=await fsp.open(target,'wx+');try{for(let index=0,indexed=0;indexed<f.DeltaLength;index++){const part=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[file,id,f.Name,index])).rows[0];need(part&&part.bytes.length===Math.min(block,f.DeltaLength-indexed),'STREAM_DELTA_INCOMPLETE');await out.writeFile(part.bytes);indexed+=part.bytes.length;}need(await codec.hash(out,f.DeltaLength)===f.DeltaHash,'STREAM_DELTA_HASH');}finally{await out.close();}}
+ async function apply(c,file,id,f,before,dir,label){const delta=path.join(dir,label+'.delta'),after=path.join(dir,label+'.after');await chunks(c,file,id,f,delta);const handles=[];try{handles.push(await fsp.open(before,'r'));handles.push(await fsp.open(delta,'r'));handles.push(await fsp.open(after,'wx+'));await codec.apply({before:handles[0],delta:handles[1],output:handles[2],preLength:f.PreLength,postLength:f.PostLength,preHash:f.PreHash,postHash:f.PostHash,records:f.DeltaRecords});return after;}finally{for(const h of handles)await h.close();}}
+ async function baseFile(c,file,name,sequence,dir){
+  if(nativeModel!==null)need(protocol.nativeNames(nativeModel).includes(name),'STREAM_NATIVE_FILE');
+  const initial=(await c.query('SELECT manifest FROM bimchat_direct_ownership.model_stream_baselines WHERE file_id=$1 AND sequence=0',[file])).rows[0];need(initial,'STREAM_DELTA_BASELINE');
+  const suffix=(nativeModel===null?'_backup/':nativeModel.slice(0,-4)+'_backup/')+name;
+  const matches=initial.manifest.filter(p=>{const normalized=p.path.replace(/\\/g,'/').toLowerCase(),target=suffix.toLowerCase();return nativeModel===null?normalized.endsWith(target):(normalized===target||normalized.endsWith('/'+target));});
+  const enrolledLog=nativeBaseline&&name===nativeBaseline.pins.files[5].name;
+  need(enrolledLog||matches.length===1,'STREAM_DELTA_BASELINE');const pin=enrolledLog?nativeBaseline.log:matches[0];
+  const start=enrolledLog?nativeBaseline.sequence:0;need(sequence>=start,'STREAM_NATIVE_ENROLLMENT_SEQUENCE');
+  let current=path.join(dir,name+'.base');const base=await fsp.open(current,'wx+');try{for(let index=0,at=0;at<pin.size;index++){const row=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_base_chunks WHERE file_id=$1 AND file_name=$2 AND chunk_index=$3',[file,name,index])).rows[0];need(row&&row.bytes.length===Math.min(block,pin.size-at),'STREAM_DELTA_BASELINE');await base.writeFile(row.bytes);at+=row.bytes.length;}need(await codec.hash(base,pin.size)===pin.sha256,'STREAM_DELTA_BASELINE');}finally{await base.close();}
+  // Cursor paging: do not load an unbounded history into RAM.
+  for(let cursor=start;cursor<sequence;){const op=(await c.query('SELECT sequence,operation_id,payload FROM bimchat_direct_ownership.model_stream_operations WHERE file_id=$1 AND sequence>$2 AND sequence<=$3 ORDER BY sequence LIMIT 1',[file,cursor,sequence])).rows[0];
+   const historical=nativeBaseline&&cursor<nativeBaseline.sequence;
+   const beforeSplit=splitLog&&cursor<splitLog.sequence;
+   need(op&&Number(op.sequence)===cursor+1&&(beforeSplit?[3,4].includes(op.payload.patch?.Schema):op.payload.patch?.Schema===(historical?3:schema)),'STREAM_DELTA_HISTORY');
+   if(beforeSplit&&op.payload.patch.Schema===4)protocol.validateNativeStream(op.payload.patch,splitLog.model);
+   else if(historical)protocol.validateStream(op.payload.patch);else validatePatch(op.payload.patch);
+   const f=op.payload.patch.Files.find(f=>f.Name===name);need(f,'STREAM_DELTA_HISTORY');const next=await apply(c,file,op.operation_id,f,current,dir,name+'.'+op.sequence);await fsp.unlink(current);current=next;cursor=Number(op.sequence);}
+  return current;
+ }
+ async function verified(a,id){const c=await pool.connect(),dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-delta-'));try{
+  const r=await row(c,a,id),body=r.document,p=body.patch;validatePatch(p);
+  for(const f of p.Files){let before;
+   if(f.Name==='users.dat'){before=path.join(dir,'users.before');await users.known(c,a.fileId,body.usersBefore);const out=await fsp.open(before,'wx');try{for(let index=0;index<Math.ceil(body.usersBefore.length/block);index++)await out.writeFile(await users.chunk(c,a.fileId,body.usersBefore,index));}finally{await out.close();}}
+   else before=await baseFile(c,a.fileId,f.Name,p.PreviousSequence,dir);
+   const after=await apply(c,a.fileId,id,f,before,dir,'new-'+f.Name);
+   if(f.Name==='users.dat'){need(body.usersAfter.length===f.PostLength&&body.usersAfter.sha256===f.PostHash,'STREAM_USERS_PATCH');await c.query('BEGIN');try{const input=fs.createReadStream(after);try{await users.importStream(c,a.fileId,body.usersAfter,input);}finally{input.destroy();}need(await users.prefix(c,a.fileId,body.usersBefore,body.usersAfter),'USERS_INDEX_CHANGED');await c.query('COMMIT');}catch(e){await c.query('ROLLBACK');throw e;}}
+  }return body;
+ }finally{c.release();await fsp.rm(dir,{recursive:true,force:true});}}
+ async function get(a,b){const c=await pool.connect();try{const op=(await c.query('SELECT payload FROM bimchat_direct_ownership.model_stream_operations WHERE file_id=$1 AND operation_id=$2',[a.fileId,b.operationId])).rows[0];need(op?.payload?.patch?.Schema===schema,'STREAM_DELTA_NOT_COMMITTED');const f=op.payload.patch.Files.find(f=>f.Name===b.name);need(f&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(f.DeltaLength/block),'STREAM_DELTA_CHUNK');const part=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[a.fileId,b.operationId,b.name,b.index])).rows[0];need(part,'STREAM_DELTA_INCOMPLETE');return {operationId:b.operationId,name:b.name,index:b.index,bytes:part.bytes.toString('base64')};}finally{c.release();}}
+
+ async function resume(a,b){const c=await pool.connect();let dir;try{
+  await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  const p=(await c.query('SELECT epoch,applied_sequence,local_pins FROM bimchat_direct_ownership.model_stream_participants WHERE file_id=$1 AND email=$2 AND device_id=$3',[a.fileId,a.email,a.deviceId])).rows[0];
+  if(!p){need(!b.name,'STREAM_RESUME_PARTICIPANT');await c.query('ROLLBACK');return {existing:false};}
+  if(nativeModel!==null&&enrollment.pending(nativeBaseline,p)){need(!b.name,'STREAM_NATIVE_ENROLLMENT_REQUIRED');await c.query('ROLLBACK');return {existing:true,enrollmentRequired:true,epoch:p.epoch,sequence:Number(p.applied_sequence)};}
+  const sequence=Number(p.applied_sequence),pins=p.local_pins;
+  if(!b.name){await c.query('ROLLBACK');return {existing:true,epoch:p.epoch,sequence,pins};}
+  need(b.epoch===p.epoch&&b.sequence===sequence&&b.pinsDigest===proof.hash(pins),'STREAM_RESUME_CHANGED');
+  const pin=pins.files.find(f=>f.name===b.name);need(pin&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(pin.length/block),'STREAM_RESUME_CHUNK');
+  let bytes;
+  if(b.name==='users.dat')bytes=await users.chunk(c,a.fileId,pins.users,b.index);
+  else{dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-resume-'));const file=await baseFile(c,a.fileId,b.name,sequence,dir),h=await fsp.open(file,'r');try{need((await h.stat()).size===pin.length&&await codec.hash(h,pin.length)===pin.sha256,'STREAM_RESUME_PIN');bytes=Buffer.alloc(Math.min(block,pin.length-b.index*block));let at=0;while(at<bytes.length){const r=await h.read(bytes,at,bytes.length-at,b.index*block+at);need(r.bytesRead>0,'STREAM_RESUME_SHORT');at+=r.bytesRead;}}finally{await h.close();}}
+  await c.query('ROLLBACK');return {epoch:p.epoch,sequence,name:b.name,index:b.index,bytes:bytes.toString('base64')};
+ }finally{try{await c.query('ROLLBACK');}finally{c.release();if(dir)await fsp.rm(dir,{recursive:true,force:true});}}}
+ return {begin,put,verified,get,resume};
+};

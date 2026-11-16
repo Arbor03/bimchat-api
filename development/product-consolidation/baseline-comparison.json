@@ -1,0 +1,209 @@
+{
+  "baseline": "..\\ownership-native-gate\\review\\slog-wire-fix-20261115\\server-release",
+  "files": {
+    "fragWorker.js": {
+      "baseline": "affb73b75a484c41a2be7dc7f2685a935f6892a31ecf46127ba3a6f8a99d5484",
+      "candidate": "affb73b75a484c41a2be7dc7f2685a935f6892a31ecf46127ba3a6f8a99d5484"
+    },
+    "index.js": {
+      "baseline": "4549c5b4182d2030c61baf4113bf0e814dfcb4f35b0cdaea945fdbc09b2235dc",
+      "candidate": "f15bdeee4946e4f1ad0d8c04d126a27be643c4b3b5c88ff9a73f45185506395d"
+    },
+    "native-readonly-preflight.sql": {
+      "baseline": "b2e3fda9165d820913bd81bfcb0b46d51b819713b4cb13d4154e2e8d35554691",
+      "candidate": "b2e3fda9165d820913bd81bfcb0b46d51b819713b4cb13d4154e2e8d35554691"
+    },
+    "ownership-review.json": {
+      "baseline": "f13352c98492038ba0a32a22dfbcec5163f9893418f1b25c3493b60503761acf",
+      "candidate": "f13352c98492038ba0a32a22dfbcec5163f9893418f1b25c3493b60503761acf"
+    },
+    "ownership-writer-inventory.json": {
+      "baseline": "cbb65095088abbf6378cfd6931f1c1dffce823b05dddd82a033f0f9d046256b9",
+      "candidate": "cbb65095088abbf6378cfd6931f1c1dffce823b05dddd82a033f0f9d046256b9"
+    },
+    "package-lock.json": {
+      "baseline": "be9c10f077b4ee0585aecf5e2b3fcd78db09f9fe6492f2ff811fd27e5bd60df5",
+      "candidate": "be9c10f077b4ee0585aecf5e2b3fcd78db09f9fe6492f2ff811fd27e5bd60df5"
+    },
+    "package.json": {
+      "baseline": "f26e0d41e88fbde6f94c5456d47c662533db0b8c28449f454ace62bdf31be1e2",
+      "candidate": "f26e0d41e88fbde6f94c5456d47c662533db0b8c28449f454ace62bdf31be1e2"
+    },
+    "product-baseline-binding.cjs": {
+      "baseline": "66444a326c5cee5678c7bb7d63830bca3623967e0e8e68a3d144c048e3a79b3c",
+      "candidate": "66444a326c5cee5678c7bb7d63830bca3623967e0e8e68a3d144c048e3a79b3c"
+    },
+    "product-bootstrap-enrollment.cjs": {
+      "baseline": "4b6fbb1068c7b9521b4f79bf283b7333d988d183c5da16650e2f24fe854bb11d",
+      "candidate": "4b6fbb1068c7b9521b4f79bf283b7333d988d183c5da16650e2f24fe854bb11d"
+    },
+    "product-bootstrap.cjs": {
+      "baseline": "2cd4d0f583cb3a735e60276628bdda420fc65fc95d30b9ef9fc0c5f3fd806742",
+      "candidate": "2cd4d0f583cb3a735e60276628bdda420fc65fc95d30b9ef9fc0c5f3fd806742"
+    },
+    "product-byte-delta.cjs": {
+      "baseline": "2ca5c7b16823aff84b1195f8c6253bffcb44f651147984e2a88dbac13baf248e",
+      "candidate": "2ca5c7b16823aff84b1195f8c6253bffcb44f651147984e2a88dbac13baf248e"
+    },
+    "product-catalog-notifications.cjs": {
+      "baseline": "9e1abcbbb296c16722d1efd093f01749c37cd27e2bb84c64d10cb1e9a827ee40",
+      "candidate": "9e1abcbbb296c16722d1efd093f01749c37cd27e2bb84c64d10cb1e9a827ee40"
+    },
+    "product-delta-stream.cjs": {
+      "baseline": "5ff546953d250fd42984b3da9c2bb86aabf4d6fccc208f8f3deb31e966034036",
+      "candidate": "5ff546953d250fd42984b3da9c2bb86aabf4d6fccc208f8f3deb31e966034036"
+    },
+    "product-initial-baseline.cjs": {
+      "baseline": "617d02ae6b22f09730e0077dcb0ee2732162e409a2a2e77f0f7f2dd4a65eb690",
+      "candidate": "617d02ae6b22f09730e0077dcb0ee2732162e409a2a2e77f0f7f2dd4a65eb690"
+    },
+    "product-model-stream-http.cjs": {
+      "baseline": "8d8b0afdd72cbc6e1d07cc7db72303841a3947bd6f66adeb66b97aba9d8abaf6",
+      "candidate": "8d8b0afdd72cbc6e1d07cc7db72303841a3947bd6f66adeb66b97aba9d8abaf6"
+    },
+    "product-model-stream-policy.cjs": {
+      "baseline": "20695a96ce703be7cf030a711629431944524f430d8300c038f545f3fe74eb01",
+      "candidate": "20695a96ce703be7cf030a711629431944524f430d8300c038f545f3fe74eb01"
+    },
+    "product-model-stream-queue.cjs": {
+      "baseline": "700c71dcc0a0a9126c828f664582491df76fd2429a04c6588636289c1fb243de",
+      "candidate": "700c71dcc0a0a9126c828f664582491df76fd2429a04c6588636289c1fb243de"
+    },
+    "product-model-stream.cjs": {
+      "baseline": "4a59620be15014597e2febb3591c1fd3a962eb9d7819e458044f8092ffae5200",
+      "candidate": "4a59620be15014597e2febb3591c1fd3a962eb9d7819e458044f8092ffae5200"
+    },
+    "product-native-admission.cjs": {
+      "baseline": "c397379dc0fc03b88c11aec48d4b00969d2870d9aa0c7f557c243a8c13d648b2",
+      "candidate": "c397379dc0fc03b88c11aec48d4b00969d2870d9aa0c7f557c243a8c13d648b2"
+    },
+    "product-native-admission.sql": {
+      "baseline": "155eff629c6e1a8bd5e147eebd26305c8e33f190966287ac70aa2409b935ffdc",
+      "candidate": "155eff629c6e1a8bd5e147eebd26305c8e33f190966287ac70aa2409b935ffdc"
+    },
+    "product-native-enrollment.cjs": {
+      "baseline": "f50f466d995291814f0d91ed97bfd92155edef2cce67d2cbe3a0bba58342d28d",
+      "candidate": "f50f466d995291814f0d91ed97bfd92155edef2cce67d2cbe3a0bba58342d28d"
+    },
+    "product-native-stream-policy.cjs": {
+      "baseline": "cf6e509f1ac9624696ad6e1bfed188b2628fea3dc147bbb6503599ba2b76e1e2",
+      "candidate": "cf6e509f1ac9624696ad6e1bfed188b2628fea3dc147bbb6503599ba2b76e1e2"
+    },
+    "product-ownership-download.cjs": {
+      "baseline": "8b11a60225b9408a1b8bfc2feb7e7851cf2828e94a6dc7824a18c4faef5d8678",
+      "candidate": "8b11a60225b9408a1b8bfc2feb7e7851cf2828e94a6dc7824a18c4faef5d8678"
+    },
+    "product-ownership-quiesce.cjs": {
+      "baseline": "e0229eacb3c1ae33c079697fd869dc01ee9afe6cb6403c611a8e33fb0e706262",
+      "candidate": "e0229eacb3c1ae33c079697fd869dc01ee9afe6cb6403c611a8e33fb0e706262"
+    },
+    "product-ownership.cjs": {
+      "baseline": "21bd5b5bd157d2a564e9add530eeca094188b7a95e97c2d539f72e97a043c904",
+      "candidate": "21bd5b5bd157d2a564e9add530eeca094188b7a95e97c2d539f72e97a043c904"
+    },
+    "product-post-sync-renewal.cjs": {
+      "baseline": "0b054afb00c693b18457c4274cb5ab0aefed725496a040e8a886231d6a98becb",
+      "candidate": "0b054afb00c693b18457c4274cb5ab0aefed725496a040e8a886231d6a98becb"
+    },
+    "product-r2-streaming.cjs": {
+      "baseline": "57d5b348065d2bacca0e517cadf94ef123a766138d496ac055eb5411eeaa373b",
+      "candidate": "57d5b348065d2bacca0e517cadf94ef123a766138d496ac055eb5411eeaa373b"
+    },
+    "product-recovery-status.cjs": {
+      "baseline": "45867ff69b42c224227408db463f31ca2c1e828f49f2319ede9754800c8cd9f2",
+      "candidate": "45867ff69b42c224227408db463f31ca2c1e828f49f2319ede9754800c8cd9f2"
+    },
+    "product-renewal.cjs": {
+      "baseline": "5eb4a57994bd15a769797b02c9ddd63b3c1195c63fb168746553340d8dd0f078",
+      "candidate": "5eb4a57994bd15a769797b02c9ddd63b3c1195c63fb168746553340d8dd0f078"
+    },
+    "product-session-lifetime.cjs": {
+      "baseline": "9d6669c31df6d519ec8a9c105a9e4fd76c73f68b935090c83b2daa707a7c33fe",
+      "candidate": "9d6669c31df6d519ec8a9c105a9e4fd76c73f68b935090c83b2daa707a7c33fe"
+    },
+    "product-session-reconnect.cjs": {
+      "baseline": "0d78e645096c13c402608be6ea321f5689d87b6c3ec1f4d9d9437dc6b757b3c9",
+      "candidate": "0d78e645096c13c402608be6ea321f5689d87b6c3ec1f4d9d9437dc6b757b3c9"
+    },
+    "product-session-registration.cjs": {
+      "baseline": "75165953be3ef23a5dd7c2bc5ed4a14e4fd3564560df5a741b890fb0d3442c13",
+      "candidate": "75165953be3ef23a5dd7c2bc5ed4a14e4fd3564560df5a741b890fb0d3442c13"
+    },
+    "product-slog-notifications.cjs": {
+      "baseline": "055fa3b00a55c9195146a75aeca49deca8d8e140326294d4c988b5e92b68dde1",
+      "candidate": "055fa3b00a55c9195146a75aeca49deca8d8e140326294d4c988b5e92b68dde1"
+    },
+    "product-slog-policy.cjs": {
+      "baseline": "cdc5f26f19959249d93ace71d2c237aa29789a80cf3a34456e296a9359ce2544",
+      "candidate": "cdc5f26f19959249d93ace71d2c237aa29789a80cf3a34456e296a9359ce2544"
+    },
+    "product-slog-stream.cjs": {
+      "baseline": "2a3c21e9ac347d678b07632714b6d6d7c50565c9ed059d81a444699c85bb16c6",
+      "candidate": "2a3c21e9ac347d678b07632714b6d6d7c50565c9ed059d81a444699c85bb16c6"
+    },
+    "product-slog-stream.sql": {
+      "baseline": "4243f90f516357b42cd3de5869b94dc5bc8300d2a3a216546d4ef39bbd41f0fa",
+      "candidate": "4243f90f516357b42cd3de5869b94dc5bc8300d2a3a216546d4ef39bbd41f0fa"
+    },
+    "product-slog-transition.cjs": {
+      "baseline": "6e1d9ce2bc3d376a56631c5f1e2ea5aebd558b0dbdd9fddbf8f12bea4b177e46",
+      "candidate": "6e1d9ce2bc3d376a56631c5f1e2ea5aebd558b0dbdd9fddbf8f12bea4b177e46"
+    },
+    "product-startup-renewal.cjs": {
+      "baseline": "54287ec6da82fdd1a7cb0a9560ad400b6f698ee32d41141a8ac2d26e0773a288",
+      "candidate": "54287ec6da82fdd1a7cb0a9560ad400b6f698ee32d41141a8ac2d26e0773a288"
+    },
+    "product-stream-base.cjs": {
+      "baseline": "d1ff530e56b66993b6e3ba25e01b33c953387c4f76dfde2543bebacfb94557d6",
+      "candidate": "d1ff530e56b66993b6e3ba25e01b33c953387c4f76dfde2543bebacfb94557d6"
+    },
+    "product-stream-baseline.cjs": {
+      "baseline": "573b4df56164280bc04b239ebe5ce8e63bdbe33e3f130b6ac4da803b65d1dde1",
+      "candidate": "573b4df56164280bc04b239ebe5ce8e63bdbe33e3f130b6ac4da803b65d1dde1"
+    },
+    "product-stream-chunks.cjs": {
+      "baseline": "0189f87dbf080e7fe1690db97819d3a7d4e2a366e01d524d081dd3537fb3b37c",
+      "candidate": "0189f87dbf080e7fe1690db97819d3a7d4e2a366e01d524d081dd3537fb3b37c"
+    },
+    "product-stream-deltas.cjs": {
+      "baseline": "c0bea77f8a303ce756f1d2416c0a077ce107d1acba650f99ca514643720c3524",
+      "candidate": "c0bea77f8a303ce756f1d2416c0a077ce107d1acba650f99ca514643720c3524"
+    },
+    "product-stream-images.cjs": {
+      "baseline": "350eca5daad516d9063dad065e3ead8050757ff06b61ec7dc6a21999e631b7d9",
+      "candidate": "350eca5daad516d9063dad065e3ead8050757ff06b61ec7dc6a21999e631b7d9"
+    },
+    "product-stream-notifications.cjs": {
+      "baseline": "cb702675eec0c3787a4e36f7e33f4205ae8ad6a4ad37b63e7f421b49b113837b",
+      "candidate": "cb702675eec0c3787a4e36f7e33f4205ae8ad6a4ad37b63e7f421b49b113837b"
+    },
+    "product-stream-users.cjs": {
+      "baseline": "eb419d64ee9eb652e5dc1ec83d3f25d5b7b4d83455b7a7bb5d7f49083197e341",
+      "candidate": "eb419d64ee9eb652e5dc1ec83d3f25d5b7b4d83455b7a7bb5d7f49083197e341"
+    },
+    "product-sync-batches.cjs": {
+      "baseline": "58e0a1e5f4621fd28d26c43c71d3260401822fe5b8c0d2941dafa5f3b349e48b",
+      "candidate": "58e0a1e5f4621fd28d26c43c71d3260401822fe5b8c0d2941dafa5f3b349e48b"
+    },
+    "product-upload-receipts.cjs": {
+      "baseline": "0ac9e821b298341516b6f57d910a13458c31d43a5ea97049a93004d077ebc5bd",
+      "candidate": "0ac9e821b298341516b6f57d910a13458c31d43a5ea97049a93004d077ebc5bd"
+    },
+    "product-upload-seal-jobs.cjs": {
+      "baseline": "457dc4f4a16e56d0c8e614cc4e813a7939a755626bb05ae96c9144e1352843d0",
+      "candidate": "457dc4f4a16e56d0c8e614cc4e813a7939a755626bb05ae96c9144e1352843d0"
+    },
+    "product-upload-seal-jobs.sql": {
+      "baseline": "0a3537505b1ebc49c119ac3866d9416888c929e22557ba227ae2d46ba4ce794c",
+      "candidate": "0a3537505b1ebc49c119ac3866d9416888c929e22557ba227ae2d46ba4ce794c"
+    },
+    "product-user-table.cjs": {
+      "baseline": "1d689c267320cbbf2a82fdddd33e3944ed41eeacc5c34b2a6e23377ff645ccfb",
+      "candidate": "1d689c267320cbbf2a82fdddd33e3944ed41eeacc5c34b2a6e23377ff645ccfb"
+    },
+    "product-writer-fences.cjs": {
+      "baseline": "ee3a096ea903bbdb2b7c8d4656b6348233e59d840f58893a9a7179e612362880",
+      "candidate": "ee3a096ea903bbdb2b7c8d4656b6348233e59d840f58893a9a7179e612362880"
+    }
+  }
+}

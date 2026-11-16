@@ -1,0 +1,348 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BIMChat - Product concept</title><meta name="description" content="Interactive BIMChat workspace and documentation concept. Sample data."><style>html{color-scheme:light}body{margin:0;padding:12px;background:#f5f6f8}button,select{touch-action:manipulation}#bimchat-workspace-concept nav i{display:none}</style></head><body style="margin:0"><div id="bimchat-workspace-concept">
+  <style>
+    #bimchat-workspace-concept{--bc-bg:light-dark(#f5f6f8,#141b24);--bc-panel:light-dark(#ffffff,#1b2531);--bc-text:light-dark(#202c3b,#e6edf6);--bc-sub:light-dark(#566579,#abb9cb);--bc-line:light-dark(#dfe5ed,#394758);--bc-blue:light-dark(#2559aa,#95bdff);--bc-tint:light-dark(#edf3ff,#253a56);--bc-warn:light-dark(#875b16,#e8c37d);--bc-warn-bg:light-dark(#fff4df,#3d3322);color:var(--bc-text);font:14px/1.5 system-ui,sans-serif;width:100%}
+    #bimchat-workspace-concept *{box-sizing:border-box}
+    #bimchat-workspace-concept button,#bimchat-workspace-concept select{font:inherit;cursor:pointer}
+    #bimchat-workspace-concept button:focus-visible,#bimchat-workspace-concept select:focus-visible{outline:3px solid var(--bc-blue);outline-offset:2px}
+    #bimchat-workspace-concept .bc-caption{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:0 100px 14px 0;color:var(--bc-sub);font-size:12px}
+    #bimchat-workspace-concept select{background:var(--bc-panel);color:var(--bc-text);border:1px solid var(--bc-line);padding:7px;border-radius:6px;max-width:100%}
+    #bimchat-workspace-concept .bc-window{background:var(--bc-bg);border:1px solid var(--bc-line);border-radius:12px;overflow:hidden}
+    #bimchat-workspace-concept .bc-top{display:flex;align-items:center;gap:20px;padding:17px 22px;background:var(--bc-panel);border-bottom:1px solid var(--bc-line);flex-wrap:wrap}
+    #bimchat-workspace-concept .bc-brand{font-weight:650;letter-spacing:-.3px;display:flex;align-items:center;gap:9px}
+    #bimchat-workspace-concept .bc-logo{background:var(--bc-blue);color:var(--bc-panel);border-radius:7px;padding:2px 9px;font-size:18px}
+    #bimchat-workspace-concept .bc-project{border-left:1px solid var(--bc-line);padding-left:20px}
+    #bimchat-workspace-concept .bc-person{margin-left:auto;color:var(--bc-sub);font-size:12px}
+    #bimchat-workspace-concept .bc-layout{display:grid;grid-template-columns:176px minmax(0,1fr);min-height:540px}
+    #bimchat-workspace-concept nav{background:var(--bc-panel);border-right:1px solid var(--bc-line);padding:18px 10px}
+    #bimchat-workspace-concept nav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;color:var(--bc-sub);border:0;border-radius:7px;padding:11px 10px;margin:3px 0}
+    #bimchat-workspace-concept nav button[aria-current="page"]{background:var(--bc-tint);color:var(--bc-blue);font-weight:600}
+    #bimchat-workspace-concept nav svg{width:17px;height:17px;flex-shrink:0}
+    #bimchat-workspace-concept main{padding:25px;min-width:0}
+    #bimchat-workspace-concept h2{font:600 23px/1.25 system-ui,sans-serif;letter-spacing:-.5px;margin:0 0 7px}
+    #bimchat-workspace-concept h3{font:600 15px/1.4 system-ui,sans-serif;margin:0 0 12px}
+    #bimchat-workspace-concept p{margin:0 0 14px}
+    #bimchat-workspace-concept .bc-sub{color:var(--bc-sub);font-size:12px}
+    #bimchat-workspace-concept .bc-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:22px 0 14px}
+    #bimchat-workspace-concept .bc-tag{display:inline-block;background:var(--bc-warn-bg);color:var(--bc-warn);border-radius:5px;padding:3px 7px;font-size:12px;white-space:nowrap}
+    #bimchat-workspace-concept .bc-tag.neutral{color:var(--bc-sub);background:var(--bc-bg)}
+    #bimchat-workspace-concept .bc-tag.ready{color:var(--bc-blue);background:var(--bc-tint)}
+    #bimchat-workspace-concept .bc-btn{border:1px solid var(--bc-line);border-radius:6px;padding:8px 12px;background:var(--bc-panel);color:var(--bc-text)}
+    #bimchat-workspace-concept .bc-link{border:0;padding:0;background:none;color:var(--bc-blue);text-align:left;text-decoration:underline;text-underline-offset:3px}
+    #bimchat-workspace-concept .bc-box{background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:9px;padding:19px;margin:15px 0}
+    #bimchat-workspace-concept .bc-register{background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:9px;overflow:hidden}
+    #bimchat-workspace-concept .bc-row{display:grid;grid-template-columns:minmax(160px,2fr) minmax(70px,1fr) minmax(85px,1fr) 64px;gap:12px;align-items:center;padding:16px;border-bottom:1px solid var(--bc-line);text-align:left;width:100%;background:none;color:var(--bc-text);border-top:0;border-left:0;border-right:0}
+    #bimchat-workspace-concept button.bc-row:hover{background:var(--bc-tint)}
+    #bimchat-workspace-concept .bc-row:last-child{border-bottom:0}
+    #bimchat-workspace-concept .bc-colhead{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--bc-sub);background:var(--bc-bg)}
+    #bimchat-workspace-concept .bc-item strong{font-weight:600;display:block}
+    #bimchat-workspace-concept .bc-tabs{display:flex;flex-wrap:wrap;gap:5px;border-bottom:1px solid var(--bc-line);margin:22px 0 18px}
+    #bimchat-workspace-concept .bc-tabs button{border:0;border-bottom:2px solid transparent;padding:10px 10px;background:none;color:var(--bc-sub)}
+    #bimchat-workspace-concept .bc-tabs button[aria-selected="true"]{border-bottom-color:var(--bc-blue);color:var(--bc-blue);font-weight:600}
+    #bimchat-workspace-concept .bc-facts{display:flex;gap:22px;flex-wrap:wrap;margin-top:18px}
+    #bimchat-workspace-concept .bc-facts strong{font-weight:500;display:block}
+    #bimchat-workspace-concept .bc-lineitem{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--bc-line);flex-wrap:wrap}
+    #bimchat-workspace-concept .bc-lineitem:last-child{border-bottom:0}
+    #bimchat-workspace-concept .bc-review{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,1fr);gap:16px}
+    #bimchat-workspace-concept .bc-sheet{background:var(--bc-panel);border:1px solid var(--bc-line);padding:22px 16px 10px;min-width:0}
+    #bimchat-workspace-concept .bc-plan{position:relative;min-height:200px;margin:18px 10px 28px;display:grid;grid-template-columns:1fr .38fr 1fr;grid-template-rows:1fr 1fr;border:3px double var(--bc-sub)}
+    #bimchat-workspace-concept .bc-room{border:1px solid var(--bc-sub);display:grid;place-items:center;font-size:11px;color:var(--bc-sub);min-height:82px}
+    #bimchat-workspace-concept .bc-hall{grid-column:2;grid-row:1/3;border-left:1px solid var(--bc-sub);border-right:1px solid var(--bc-sub)}
+    #bimchat-workspace-concept .bc-mark{position:absolute;left:28%;top:34%;width:43%;height:38%;border:2px dashed light-dark(#b13b43,#ff8d96);border-radius:35%;background:transparent;color:light-dark(#b13b43,#ff8d96);display:flex;align-items:flex-start;justify-content:flex-end}
+    #bimchat-workspace-concept .bc-mark span{background:var(--bc-panel);border:2px solid currentColor;border-radius:50%;width:25px;height:25px;font-weight:600}
+    #bimchat-workspace-concept .bc-note{background:var(--bc-panel);border-left:3px solid light-dark(#b13b43,#ff8d96);padding:16px;align-self:start}
+    #bimchat-workspace-concept .bc-event{padding:0 0 18px 20px;border-left:2px solid var(--bc-line);position:relative}
+    #bimchat-workspace-concept .bc-event:before{content:'';position:absolute;left:-5px;top:5px;width:8px;height:8px;border-radius:50%;background:var(--bc-blue)}
+    #bimchat-workspace-concept .bc-back{margin-bottom:16px}
+    #bimchat-workspace-concept .bc-action-note{padding:10px 12px;background:var(--bc-tint);color:var(--bc-blue);border-radius:5px;margin-top:15px}
+    @media(max-width:760px){#bimchat-workspace-concept .bc-layout{grid-template-columns:1fr}#bimchat-workspace-concept nav{display:flex;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--bc-line);padding:7px}#bimchat-workspace-concept nav button{width:auto;margin:0;padding:8px}#bimchat-workspace-concept main{padding:17px}#bimchat-workspace-concept .bc-review{grid-template-columns:1fr}}
+    @media(max-width:480px){#bimchat-workspace-concept .bc-row{grid-template-columns:1fr auto;gap:7px;padding:13px}#bimchat-workspace-concept .bc-colhead{display:none}#bimchat-workspace-concept .bc-row .bc-item{grid-column:1/-1}#bimchat-workspace-concept .bc-row .bc-date{display:none}#bimchat-workspace-concept .bc-top{padding:13px;gap:10px}#bimchat-workspace-concept .bc-project{border:0;padding:0}#bimchat-workspace-concept .bc-person{width:100%;margin:0}#bimchat-workspace-concept .bc-caption{padding-right:0}#bimchat-workspace-concept .bc-tabs button{padding:9px 6px}}
+    #bimchat-workspace-concept .bc-explorer{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start}
+    #bimchat-workspace-concept .bc-folders{background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:8px;padding:7px}
+    #bimchat-workspace-concept .bc-folder-link{display:flex;gap:9px;align-items:center;width:100%;padding:11px 10px;border:0;border-radius:5px;background:none;color:var(--bc-text);text-align:left;font-size:12px}
+    #bimchat-workspace-concept .bc-folder-link svg{flex-shrink:0;color:var(--bc-blue)}
+    #bimchat-workspace-concept .bc-folder-link.active,#bimchat-workspace-concept .bc-file-row.active{background:var(--bc-tint)}
+    #bimchat-workspace-concept .bc-file-content{min-width:0}
+    #bimchat-workspace-concept .bc-breadcrumb{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 15px;font-size:12px}
+    #bimchat-workspace-concept .bc-file-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto 10px;gap:10px;align-items:center;padding:15px;border:0;border-bottom:1px solid var(--bc-line);background:var(--bc-panel);color:var(--bc-text);text-align:left}
+    #bimchat-workspace-concept .bc-file-row:hover{background:var(--bc-tint)}
+    #bimchat-workspace-concept .bc-file-name{display:flex;gap:9px;align-items:center;flex-wrap:wrap;overflow-wrap:anywhere}
+    #bimchat-workspace-concept .bc-file-name strong{font-weight:500}
+    #bimchat-workspace-concept .bc-file-name small{width:100%}
+    #bimchat-workspace-concept .bc-file-content h3{overflow-wrap:anywhere}
+    @media(max-width:1050px){#bimchat-workspace-concept .bc-explorer{grid-template-columns:1fr}#bimchat-workspace-concept .bc-folders{display:flex;flex-wrap:wrap;gap:4px}#bimchat-workspace-concept .bc-folder-link{width:auto;max-width:100%}#bimchat-workspace-concept .bc-file-row{font-size:12px}}
+    #bimchat-workspace-concept .bc-layout{transition:grid-template-columns .18s ease}
+    #bimchat-workspace-concept nav .bc-collapse{border-bottom:1px solid var(--bc-line);border-radius:0;margin-bottom:12px;padding-bottom:14px}
+    #bimchat-workspace-concept .bc-layout.is-collapsed{grid-template-columns:60px minmax(0,1fr)}
+    #bimchat-workspace-concept .is-collapsed nav{display:block;padding:12px 5px;border-right:1px solid var(--bc-line)}
+    #bimchat-workspace-concept .is-collapsed nav button{width:100%;justify-content:center;padding:13px 8px}
+    #bimchat-workspace-concept .is-collapsed .bc-nav-label{display:none}
+    #bimchat-workspace-concept .bc-model-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:22px}
+    #bimchat-workspace-concept .bc-model-card{background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:9px;overflow:hidden;text-align:left;color:var(--bc-text);padding:0}
+    #bimchat-workspace-concept .bc-model-card:hover{border-color:var(--bc-blue)}
+    #bimchat-workspace-concept .bc-model-card .bc-model-art{height:125px;background:var(--bc-tint);padding:12px}
+    #bimchat-workspace-concept .bc-model-card .bc-model-info{padding:16px}
+    #bimchat-workspace-concept .bc-model-art svg{width:100%;height:100%;display:block}
+    #bimchat-workspace-concept .bc-model-view{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:16px}
+    #bimchat-workspace-concept .bc-model-canvas{background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:9px;overflow:hidden;min-width:0}
+    #bimchat-workspace-concept .bc-model-canvas .bc-model-art{height:310px;background:linear-gradient(#eef4fb,#f9fbfe);padding:24px}
+    #bimchat-workspace-concept .bc-model-tools{padding:12px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--bc-line)}
+    #bimchat-workspace-concept .bc-model-tools button[aria-pressed="true"]{background:var(--bc-tint);border-color:var(--bc-blue);color:var(--bc-blue)}
+    @media(max-width:1050px){#bimchat-workspace-concept .bc-model-view{grid-template-columns:1fr}}
+    @media(prefers-reduced-motion:reduce){#bimchat-workspace-concept .bc-layout{transition:none}}
+    #bimchat-workspace-concept .bc-folders{display:block}
+    #bimchat-workspace-concept .bc-tree-row{display:flex;align-items:center;border-radius:6px;min-width:0}
+    #bimchat-workspace-concept .bc-tree-row.selected{background:var(--bc-tint)}
+    #bimchat-workspace-concept .bc-tree-row.selected .bc-folder-link{color:var(--bc-blue);font-weight:600}
+    #bimchat-workspace-concept .bc-tree-toggle{width:26px;min-width:26px;height:30px;border:0;background:transparent;color:var(--bc-sub);font-size:18px;border-radius:5px;padding:0}
+    #bimchat-workspace-concept .bc-tree-toggle:hover{background:var(--bc-line)}
+    #bimchat-workspace-concept .bc-tree-spacer{width:26px;min-width:26px}
+    #bimchat-workspace-concept .bc-tree-row .bc-folder-link{min-width:0;flex:1;padding:11px 4px;line-height:1.5}
+    #bimchat-workspace-concept .bc-tree-row .bc-folder-link span{overflow-wrap:anywhere}
+    #bimchat-workspace-concept .bc-model-choice{display:flex;gap:9px;align-items:center;cursor:pointer;padding:7px 0}
+    #bimchat-workspace-concept input[type="checkbox"]{width:17px;height:17px;accent-color:var(--bc-blue);flex-shrink:0}
+    #bimchat-workspace-concept .bc-selection-bar{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;padding:16px;background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:8px;margin-top:16px}
+    #bimchat-workspace-concept .bc-selection-bar>span{margin-right:auto}
+    #bimchat-workspace-concept .bc-primary{background:var(--bc-blue);color:var(--bc-panel);border-color:var(--bc-blue)}
+    #bimchat-workspace-concept button:disabled{opacity:.5;cursor:default}
+    #bimchat-workspace-concept .bc-workspace{display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:16px;align-items:start}
+    #bimchat-workspace-concept .bc-workspace-main{min-width:0}
+    #bimchat-workspace-concept .bc-scene-models{display:flex;gap:14px;flex-wrap:wrap}
+    #bimchat-workspace-concept .bc-model-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+    #bimchat-workspace-concept .bc-viewer-chat{background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:9px;overflow:hidden;display:flex;flex-direction:column;min-height:490px}
+    #bimchat-workspace-concept .bc-chat-head{padding:16px;border-bottom:1px solid var(--bc-line)}
+    #bimchat-workspace-concept .bc-chat-head select{width:100%;margin:6px 0 10px}
+    #bimchat-workspace-concept .bc-chat-head p{margin:0}
+    #bimchat-workspace-concept .bc-chat-messages{padding:16px;flex:1}
+    #bimchat-workspace-concept .bc-chat-message{padding:12px;background:var(--bc-bg);border-radius:7px;margin-bottom:12px;font-size:12px}
+    #bimchat-workspace-concept .bc-chat-message p{margin:7px 0}
+    #bimchat-workspace-concept .bc-chat-compose{border-top:1px solid var(--bc-line);padding:14px}
+    #bimchat-workspace-concept .bc-chat-compose textarea{width:100%;box-sizing:border-box;font:inherit;font-size:12px;resize:none;border:1px solid var(--bc-line);border-radius:6px;padding:10px;background:var(--bc-bg);color:var(--bc-sub)}
+    #bimchat-workspace-concept .bc-chat-compose p{margin:8px 0 0}
+    #bimchat-workspace-concept .bc-empty-model{display:grid;place-items:center;height:100%;text-align:center;color:var(--bc-sub)}
+    @media(max-width:850px){#bimchat-workspace-concept .bc-workspace{grid-template-columns:1fr}#bimchat-workspace-concept .bc-viewer-chat{min-height:0}}
+    #bimchat-workspace-concept .bc-model-filters{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
+    #bimchat-workspace-concept .bc-model-filters label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--bc-sub);min-width:140px;flex:1}
+    #bimchat-workspace-concept .bc-model-filters label:first-child{flex:2}
+    #bimchat-workspace-concept .bc-model-filters input{font:inherit;font-size:14px;padding:9px;border:1px solid var(--bc-line);border-radius:6px;color:var(--bc-text);background:var(--bc-panel);min-width:0;width:100%;box-sizing:border-box}
+    #bimchat-workspace-concept .bc-model-list{max-height:520px;overflow:auto;border:1px solid var(--bc-line);border-radius:9px;background:var(--bc-panel)}
+    #bimchat-workspace-concept .bc-group-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:11px 15px;background:var(--bc-bg);border-bottom:1px solid var(--bc-line)}
+    #bimchat-workspace-concept .bc-group-toggle{background:none;border:0;padding:0;color:var(--bc-text);text-align:left;font-weight:600}
+    #bimchat-workspace-concept .bc-group-toggle>span:first-child{display:inline-block;min-width:18px}
+    #bimchat-workspace-concept .bc-model-list-row{display:grid;grid-template-columns:22px minmax(160px,1fr) 90px 40px 62px;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--bc-line);cursor:pointer}
+    #bimchat-workspace-concept .bc-model-list-row:hover{background:var(--bc-tint)}
+    #bimchat-workspace-concept .bc-model-list-row:has(input:checked){background:var(--bc-tint)}
+    #bimchat-workspace-concept .bc-model-list-name strong{font-weight:500;display:block;font-size:13px}
+    #bimchat-workspace-concept .bc-model-list-name small{display:block;margin-top:3px}
+    #bimchat-workspace-concept .bc-access{padding:3px 7px;border-radius:5px;background:var(--bc-bg);color:var(--bc-sub);font-size:11px;text-align:center;border:1px solid var(--bc-line)}
+    #bimchat-workspace-concept .bc-access.edit{background:var(--bc-tint);color:var(--bc-blue)}
+    #bimchat-workspace-concept .bc-scene-picker{background:var(--bc-panel);border:1px solid var(--bc-line);border-radius:8px;margin-bottom:14px;overflow:hidden}
+    #bimchat-workspace-concept .bc-scene-picker>summary{cursor:pointer;padding:14px;font-size:13px;font-weight:600}
+    #bimchat-workspace-concept .bc-scene-list{max-height:270px;overflow:auto}
+    #bimchat-workspace-concept .bc-scene-list .bc-model-list-row{grid-template-columns:22px minmax(0,1fr) 35px 56px;gap:8px}
+    #bimchat-workspace-concept .bc-scene-list .bc-model-discipline{display:none}
+    #bimchat-workspace-concept .bc-selection-bar{position:sticky;bottom:8px;z-index:2;box-shadow:0 3px 15px #202c3b10}
+    @media(max-width:650px){#bimchat-workspace-concept .bc-model-list-row{grid-template-columns:22px minmax(0,1fr) 32px 54px;gap:7px;padding:12px 9px}#bimchat-workspace-concept .bc-model-discipline{display:none}#bimchat-workspace-concept .bc-model-list-name strong{font-size:12px}#bimchat-workspace-concept .bc-model-list-name small{font-size:10px}#bimchat-workspace-concept .bc-group-heading{padding:11px 10px}#bimchat-workspace-concept .bc-model-filters label:first-child{flex-basis:100%}}
+    #bimchat-workspace-concept .bc-group-toggle{display:flex;align-items:center;gap:8px;min-height:28px;flex-wrap:wrap}
+    #bimchat-workspace-concept .bc-group-arrow{width:14px;height:14px;flex-shrink:0;transition:transform .15s ease}
+    @media(prefers-reduced-motion:reduce){#bimchat-workspace-concept .bc-group-arrow{transition:none}}
+  </style>
+  <div class="bc-caption"><span>Design concept · sample data</span><label>View as <select id="bc-role"><option value="reviewer">Reviewer</option><option value="contributor">Contributor</option><option value="admin">Administrator</option></select></label></div>
+  <div class="bc-window">
+    <header class="bc-top"><div class="bc-brand"><span class="bc-logo">B</span>BIMChat</div><div class="bc-project">Park Residences <span class="bc-sub">/ Sample project</span></div><div class="bc-person" id="bc-person">Elira · Reviewer</div></header>
+    <div class="bc-layout">
+      <nav aria-label="Project">
+        <button class="bc-collapse" data-collapse="true" aria-expanded="true" aria-label="Collapse menu" title="Collapse menu"></button>
+        <button data-screen="overview"><i data-lucide="layout-dashboard" aria-hidden="true"></i>Overview</button>
+        <button data-screen="files"><i data-lucide="folder" aria-hidden="true"></i>Project files</button>
+        <button data-screen="models">3D Models</button>
+        <button data-screen="documentation" aria-current="page"><i data-lucide="clipboard-list" aria-hidden="true"></i>Documentation</button>
+        <button data-screen="tasks"><i data-lucide="list-checks" aria-hidden="true"></i>Tasks</button>
+        <button data-screen="chat"><i data-lucide="messages-square" aria-hidden="true"></i>Conversations</button>
+        <button data-screen="team"><i data-lucide="users" aria-hidden="true"></i>Team</button>
+      </nav>
+      <main id="bc-content" aria-live="polite"></main>
+    </div>
+  </div>
+  <script>
+  (()=>{
+    const root=document.getElementById('bimchat-workspace-concept');
+    const content=root.querySelector('#bc-content'), roleSelect=root.querySelector('#bc-role');
+    const initial={screen:'documentation',selected:null,tab:'progress',role:'reviewer',folder:'root',file:null,collapsed:false,modelView:'all',expandedFolders:['root','models'],viewerOpen:false,selectedModels:[],sceneModels:[],chatModel:'project',modelSearch:'',modelBuilding:'all',modelDiscipline:'all',closedModelGroups:[]};
+    let state={...initial};
+    const nav=['overview','files','models','documentation','tasks','chat','team'];
+    const iconPaths={overview:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',documentation:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M8 10h8M8 14h8M8 18h5"/>',files:'<path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/>',models:'<path d="m12 3 9 5v9l-9 5-9-5V8l9-5Zm0 10 9-5M3 8l9 5v9M7.5 5.5l9 5"/>',tasks:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="m6 10 2 2 4-5M14 10h4M6 16h12"/>',chat:'<path d="M21 11a8 8 0 0 1-8 8H7l-4 3V7a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5v4Z"/><path d="M7 8h10M7 12h7"/>',team:'<circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 4v3"/>'};
+    const icon=body=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+    root.querySelectorAll('[data-screen]').forEach(b=>{const label=b.textContent.trim();b.innerHTML=icon(iconPaths[b.dataset.screen])+`<span class="bc-nav-label">${label}</span>`;b.title=label;b.setAttribute('aria-label',label);});
+    try{state.collapsed=localStorage.getItem('bimchat-concept-menu-collapsed')==='true';}catch{}
+    const disciplines=[
+      {key:'architecture',name:'Architecture',team:'Architecture team',color:'#477fc5',version:12},
+      {key:'structure',name:'Structure',team:'Structure team',color:'#697c91',version:6},
+      {key:'mep',name:'Mechanical',team:'MEP team',color:'#3f8d92',version:4},
+      {key:'electrical',name:'Electrical',team:'MEP team',color:'#ab7e42',version:3},
+      {key:'plumbing',name:'Plumbing',team:'MEP team',color:'#7386b5',version:5}
+    ];
+    const modelList=['A','B','C','D'].flatMap((building,i)=>disciplines.map(d=>({
+      id:building==='A'?d.key:`${d.key}-${building}`,name:`Building ${building} — ${d.name}`,
+      version:`v${d.version+i}`,file:`Building-${building}_${d.name}.${d.key==='architecture'?'rvt':'ifc'}`,
+      desc:`${d.name} model`,color:d.color,building,discipline:d.name,team:d.team,
+      group:d.key==='architecture'?'working':'coordination',access:d.key==='structure'?'Review':'View'
+    })));
+    const escapeText=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const modelAccess=m=>m.group==='working'?(state.role==='reviewer'?'Review':'Edit'):m.access;
+    const filteredModels=()=>modelList.filter(m=>(state.modelBuilding==='all'||m.building===state.modelBuilding)&&(state.modelDiscipline==='all'||m.discipline===state.modelDiscipline)&&`${m.name} ${m.file} ${m.team}`.toLowerCase().includes(state.modelSearch.trim().toLowerCase()));
+    function groupedModelRows(models,scene=false){
+      return ['working','coordination'].map(group=>{
+        const rows=models.filter(m=>m.group===group),all=modelList.filter(m=>m.group===group),collapsed=state.closedModelGroups.includes((scene?'scene-':'')+group);
+        const title=group==='working'?'Working models':'Coordination models';
+        return `<section class="bc-model-group"><div class="bc-group-heading"><button class="bc-group-toggle" data-model-group="${scene?'scene-':''}${group}" aria-expanded="${!collapsed}" title="${collapsed?'Expand':'Collapse'} ${title}"><svg class="bc-group-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="transform:rotate(${collapsed?0:90}deg)"><path d="m6 3 5 5-5 5"/></svg><span>${title}</span><span class="bc-sub">${scene?rows.filter(m=>state.sceneModels.includes(m.id)).length+' open':rows.length+' / '+all.length}</span></button><span class="bc-sub">${group==='working'?'Assigned to your team':'Shared by other teams'}</span></div>${collapsed?'':rows.length?rows.map(m=>`<label class="bc-model-list-row"><input type="checkbox" ${scene?'data-scene-model':'data-select-model'}="${m.id}" ${(scene?state.sceneModels:state.selectedModels).includes(m.id)?'checked':''}><span class="bc-model-list-name"><strong>${m.name}</strong><small class="bc-sub">${m.team} · ${m.group==='working'?'Working version':'Published for coordination'}</small></span><span class="bc-sub bc-model-discipline">${m.discipline}</span><span class="bc-sub">${m.version}</span><span class="bc-access ${modelAccess(m)==='Edit'?'edit':''}">${modelAccess(m)}</span></label>`).join(''):'<p class="bc-sub" style="padding:14px">No models match these filters.</p>'}</section>`;
+      }).join('');
+    }
+    function modelPicker(){
+      const models=filteredModels(),visible=new Set(models.map(m=>m.id)),hidden=state.selectedModels.filter(id=>!visible.has(id)).length;
+      return `<h2>3D Models</h2><p class="bc-sub">Select working and coordination models to open together. Example team: Architecture.</p><div class="bc-model-filters"><label>Search models<input id="bc-model-search" type="search" value="${escapeText(state.modelSearch)}" placeholder="Search name, file or team…"></label><label>Building<select id="bc-model-building"><option value="all">All buildings</option>${['A','B','C','D'].map(b=>`<option value="${b}" ${state.modelBuilding===b?'selected':''}>Building ${b}</option>`).join('')}</select></label><label>Discipline<select id="bc-model-discipline"><option value="all">All disciplines</option>${disciplines.map(d=>`<option value="${d.name}" ${state.modelDiscipline===d.name?'selected':''}>${d.name}</option>`).join('')}</select></label></div><div class="bc-toolbar"><span class="bc-sub">${models.length} of ${modelList.length} sample models</span><button class="bc-btn" data-select-filtered="true" ${models.length?'':'disabled'}>Select filtered (${models.length})</button></div><div class="bc-model-list" tabindex="0" aria-label="Working and coordination model list">${groupedModelRows(models)}</div><div class="bc-selection-bar"><span>${state.selectedModels.length} model${state.selectedModels.length===1?'':'s'} selected${hidden?` <small class="bc-sub">(${hidden} hidden by filters)</small>`:''}</span><button class="bc-btn" data-clear-models="true" ${!state.selectedModels.length?'disabled':''}>Clear selection</button><button class="bc-btn bc-primary" data-open-models="true" ${!state.selectedModels.length?'disabled':''}>Open selected${state.selectedModels.length?' ('+state.selectedModels.length+')':''}</button></div><p class="bc-sub" style="margin-top:14px">Selection is kept across filters. Coordination access allows viewing or review; it does not grant source editing.</p><p class="bc-sub">Design preview · sample permissions and geometry, without real model loading or access enforcement.</p>`;
+    }
+
+    function sceneArt(ids,view='all'){
+      ids=[...new Set(modelList.filter(m=>ids.includes(m.id)).map(m=>m.discipline==='Architecture'?'architecture':m.discipline==='Structure'?'structure':'mep'))];
+      const floors=view==='ground'?[0]:[0,1,2];
+      return `<svg viewBox="0 0 400 280" role="img" aria-label="Illustrative combined model preview, not real project geometry"><path d="m45 218 170-92 145 79-170 73Z" fill="#dce5f0"/>${floors.map(level=>{const y=191-level*55;return `<g>${ids.includes('architecture')?`<path d="m100 ${y} 90 48v-40l-90-48Z" fill="#477fc5" opacity=".35"/><path d="m190 ${y+48} 110-58v-40l-110 58Z" fill="#477fc5" opacity=".2"/><path d="m100 ${y-40} 110-58 90 48-110 58Z" fill="#f9fbff" fill-opacity=".5" stroke="#477fc5"/>`:''}${ids.includes('structure')?`<path d="m100 ${y} 110-58 90 48-110 58Z M100 ${y}v-40m90 88v-40m110-18v-40m-90-8v-40" fill="none" stroke="#697c91" stroke-width="4"/>`:''}${ids.includes('mep')?`<path d="m117 ${y-13} 72 38 93-49m-67 35v-40m-53 13 36-19" fill="none" stroke="#3f8d92" stroke-width="5" stroke-linejoin="round"/>`:''}</g>`;}).join('')}</svg>`;
+    }
+    function renderModels(){
+      if(!state.viewerOpen){content.innerHTML=modelPicker();return;}
+      const opened=modelList.filter(m=>state.sceneModels.includes(m.id));
+      if(state.chatModel!=='project'&&!state.sceneModels.includes(state.chatModel))state.chatModel='project';
+      const chatModel=modelList.find(m=>m.id===state.chatModel);
+      const context=chatModel?chatModel.name:'Project';
+      const messages=chatModel?.id==='architecture'?[['Elira','Please check the ground-floor door opening.','A-101 · markup 01'],['Arta','I have updated the drawing for review.','Sample response']]:chatModel?.id==='structure'?[['Dritan','The structural model is ready for coordination.','Structure · v6']]:chatModel?.id==='mep'?[['Blerim','Please review the service routes against the other models.','MEP · v4']]:[['Blerim','Open the discipline models together for coordination.','Project conversation'],['Elira','Keep model-specific comments linked to the relevant model.','Project conversation']];
+      content.innerHTML=`<button class="bc-link bc-back" data-model-back="true">← Model selection</button><h2>${opened.length===1?opened[0].name:'3D workspace'}</h2><p class="bc-sub">${opened.length} model${opened.length===1?'':'s'} open · Park Residences</p><div class="bc-workspace"><div class="bc-workspace-main"><details class="bc-scene-picker"><summary>Models in this view (${opened.length} open)</summary><div class="bc-scene-list">${groupedModelRows(modelList,true)}</div></details><div class="bc-model-canvas"><div class="bc-model-tools" aria-label="Illustrative saved views"><button class="bc-btn" data-model-view="all" aria-pressed="${state.modelView==='all'}">Whole building</button><button class="bc-btn" data-model-view="ground" aria-pressed="${state.modelView==='ground'}">Ground floor</button></div><div class="bc-model-art">${opened.length?sceneArt(state.sceneModels,state.modelView):'<div class="bc-empty-model">Select a model above to add it to the view.</div>'}</div><p class="bc-sub" style="padding:12px">Illustrative geometry · selecting a model here does not change the conversation.</p></div>${state.sceneModels.includes('architecture')?'<div class="bc-toolbar"><button class="bc-link" data-folder="architecture">Show Architecture source file</button><button class="bc-link" data-doc="A-101" data-open-tab="review">Open A-101 review</button></div>':''}</div><aside class="bc-viewer-chat" aria-label="Viewer chat"><div class="bc-chat-head"><h3>Chat</h3><label class="bc-sub" for="bc-chat-context">Conversation context</label><select id="bc-chat-context"><option value="project" ${state.chatModel==='project'?'selected':''}>Project conversation</option>${opened.map(m=>`<option value="${m.id}" ${state.chatModel===m.id?'selected':''}>${m.name}</option>`).join('')}</select><p class="bc-sub">${context} · sample conversation</p></div><div class="bc-chat-messages">${messages.map(([who,message,ref])=>`<article class="bc-chat-message"><strong>${who}</strong><p>${message}</p><small class="bc-sub">${ref}</small></article>`).join('')}</div><div class="bc-chat-compose"><textarea aria-label="Message preview" placeholder="Write a message…" disabled rows="2"></textarea><button class="bc-btn" disabled>Send</button><p class="bc-sub">Sample chat · sending messages is not enabled.</p></div></aside></div>`;
+    }
+
+    const folders=[
+      {id:'root',name:'Project files',parent:null},
+      {id:'models',name:'01 Models',parent:'root'},
+      {id:'architecture',name:'Architecture',parent:'models'},
+      {id:'drawings',name:'02 Drawings',parent:'root'},
+      {id:'reports',name:'03 Reports',parent:'root'},
+      {id:'references',name:'04 Surveys & references',parent:'root'},
+      {id:'contracts',name:'05 Contracts & administration',parent:'root'},
+      {id:'correspondence',name:'06 Correspondence',parent:'root'}
+    ];
+    const projectFiles=[
+      {id:'model',folder:'architecture',name:'Architecture.rvt',type:'Revit model',version:'v12',by:'Arta',date:'15 Nov',use:'Source model for A-101 and A-102',doc:'A-101',tab:'inputs'},
+      {id:'pdf',folder:'drawings',name:'A-101_Ground-floor.pdf',type:'PDF drawing',version:'v3',by:'Arta',date:'15 Nov',use:'Output for A-101 · current work version',doc:'A-101',tab:'outputs'},
+      {id:'dwg',folder:'drawings',name:'A-101_Ground-floor.dwg',type:'DWG drawing',version:'v3',by:'Arta',date:'15 Nov',use:'Output for A-101 · current work version',doc:'A-101',tab:'outputs'},
+      {id:'report',folder:'reports',name:'Structural-design-notes.docx',type:'Working document',version:'v1',by:'Dritan',date:'14 Nov',use:'Internal working document · not an issued deliverable'},
+      {id:'survey',folder:'references',name:'Site-survey.pdf',type:'PDF reference',version:'v2',by:'Blerim',date:'15 Nov',use:'Input for A-101 · impact assessment needed',doc:'A-101',tab:'inputs'},
+      {id:'brief',folder:'references',name:'Client-brief.pdf',type:'Project brief',version:'v1',by:'Elira',date:'10 Nov',use:'Shared project reference'},
+      {id:'contract',folder:'contracts',name:'Design-agreement.pdf',type:'Contract',version:'v1',by:'Blerim',date:'10 Nov',use:'Project administration · access assigned by folder'},
+      {id:'minutes',folder:'correspondence',name:'Coordination-meeting-14-Nov.pdf',type:'Meeting minutes',version:'v1',by:'Blerim',date:'14 Nov',use:'Project correspondence'}
+    ];
+    const folderIcon='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></svg>';
+    const openFolderIcon='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3 18V5h6l2 3h9v3M3 20l3-9h16l-3 9H3Z" fill="#edf3ff"/></svg>';
+    function folderTree(id='root',depth=0){
+      const f=folders.find(x=>x.id===id),children=folders.filter(x=>x.parent===id),expanded=state.expandedFolders.includes(id),selected=state.folder===id,open=expanded||selected;
+      return `<div class="bc-tree-row ${selected?'selected':''}" style="padding-left:${depth*12}px">${children.length?`<button class="bc-tree-toggle" data-expand-folder="${id}" aria-label="${expanded?'Collapse':'Expand'} ${f.name}" aria-expanded="${expanded}" title="${expanded?'Collapse':'Expand'} ${f.name}">${expanded?'−':'+'}</button>`:'<span class="bc-tree-spacer" aria-hidden="true"></span>'}<button class="bc-folder-link" data-folder="${id}" ${selected?'aria-current="location"':''} title="${f.name} · ${open?'Open':'Closed'}">${open?openFolderIcon:folderIcon}<span>${f.name}</span></button></div>${children.length&&expanded?children.map(c=>folderTree(c.id,depth+1)).join(''):''}`;
+    }
+    function renderFiles(){
+      const current=folders.find(f=>f.id===state.folder)||folders[0];state.folder=current.id;
+      const path=[];let f=current;while(f){path.unshift(f);f=folders.find(x=>x.id===f.parent);}
+      const children=folders.filter(f=>f.parent===current.id),files=projectFiles.filter(f=>f.folder===current.id),selected=projectFiles.find(f=>f.id===state.file&&f.folder===current.id);
+      content.innerHTML=`<h2>Project files</h2><p class="bc-sub">The project archive · models, drawings, reports and supporting documents</p>
+        <div class="bc-toolbar"><span>${projectFiles.length} sample files across ${folders.length-1} folders</span><span class="bc-sub">Browse the example folders below</span></div>
+        <div class="bc-explorer"><aside class="bc-folders" aria-label="Project folders">${folderTree()}</aside>
+        <div class="bc-file-content"><div class="bc-breadcrumb" aria-label="Folder path">${path.map(f=>`<button class="bc-link" data-folder="${f.id}">${f.name}</button>`).join('<span aria-hidden="true">/</span>')}</div>
+        <div class="bc-register">${children.map(f=>`<button class="bc-file-row" data-folder="${f.id}"><span class="bc-file-name">${folderIcon}<strong>${f.name}</strong></span><span class="bc-sub">Folder</span><span aria-hidden="true">›</span></button>`).join('')}${files.map(f=>`<button class="bc-file-row ${selected?.id===f.id?'active':''}" data-file="${f.id}"><span class="bc-file-name"><strong>${f.name}</strong><small class="bc-sub">${f.type} · ${f.by}</small></span><span class="bc-sub">${f.version} · ${f.date}</span><span aria-hidden="true">›</span></button>`).join('')}${!children.length&&!files.length?'<p style="padding:16px">This folder is empty.</p>':''}</div>
+        ${selected?`<div class="bc-box"><h3>${selected.name}</h3><p class="bc-sub">${selected.type} · ${selected.version} · updated by ${selected.by}</p><p>${selected.use}</p>${selected.doc?`<button class="bc-btn" data-doc="${selected.doc}" data-open-tab="${selected.tab}">Open linked deliverable ${selected.doc}</button>`:'<p class="bc-sub">Files can be stored here without being linked to a deliverable.</p>'}<p class="bc-sub" style="margin-top:12px">Sample file details. File contents and uploads are not available in this design preview.</p></div>`:''}
+        </div></div><div class="bc-action-note">One file, one version history. Deliverable inputs and outputs reference files in this archive.</div>`;
+    }
+    const tabs={progress:'Progress',inputs:'Inputs',outputs:'Outputs',review:'Redline review',history:'History'};
+    const docs=[{id:'A-101',name:'Ground floor',type:'Sheet · Architecture',owner:'Arta',status:'Ready for review',date:'18 Nov',revision:'R01'},
+      {id:'A-102',name:'First floor',type:'Sheet · Architecture',owner:'Arta',status:'In progress',date:'19 Nov',revision:'—'},
+      {id:'STR-01',name:'Structural report',type:'Report · Structural',owner:'Dritan',status:'Planned',date:'22 Nov',revision:'—'},
+      {id:'MOD-01',name:'Coordinated model',type:'Model · Coordination',owner:'Blerim',status:'Approved',date:'20 Nov',revision:'R00'}];
+    const badge=s=>`<span class="bc-tag ${s==='Planned'?'neutral':s==='Approved'?'ready':''}">${s}</span>`;
+    const line=(name,detail,right='')=>`<div class="bc-lineitem"><div>${name}<div class="bc-sub">${detail}</div></div>${right}</div>`;
+    function restore(saved){if(!saved)return;const s=saved.privateContent||{};state={...state,screen:nav.includes(s.screen)?s.screen:state.screen,selected:docs.some(d=>d.id===s.selected)?s.selected:null,tab:tabs[s.tab]?s.tab:state.tab,role:['reviewer','contributor','admin'].includes(s.role)?s.role:state.role};}
+    restore(window.openai?.widgetState);
+    function persist(){window.openai?.setWidgetState?.({modelContent:{proposal:'Deliverable register with workspaces',screen:state.screen,section:tabs[state.tab],role:state.role},privateContent:state}).catch(()=>{});}
+    function render(){
+      const scenePickerWasOpen=root.querySelector('.bc-scene-picker')?.open;
+      root.querySelector('.bc-layout').classList.toggle('is-collapsed',state.collapsed);
+      const toggle=root.querySelector('[data-collapse]'),label=state.collapsed?'Expand menu':'Collapse menu';
+      toggle.innerHTML=icon(state.collapsed?'<path d="m9 5 7 7-7 7"/>':'<path d="m15 5-7 7 7 7"/>')+`<span class="bc-nav-label">${label}</span>`;
+      toggle.setAttribute('aria-expanded',String(!state.collapsed));toggle.setAttribute('aria-label',label);toggle.title=label;
+      roleSelect.value=state.role;
+      root.querySelector('#bc-person').textContent={reviewer:'Elira · Reviewer',contributor:'Arta · Contributor',admin:'Blerim · Project administrator'}[state.role];
+      root.querySelectorAll('[data-screen]').forEach(b=>{if(b.dataset.screen===state.screen)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+      if(state.selected){renderDoc();return;}
+      if(state.screen==='documentation'){
+        content.innerHTML=`<h2>Documentation</h2><p class="bc-sub">Deliverables · Detailed design package</p><div class="bc-toolbar"><span>4 deliverables · including work not yet published</span><span class="bc-sub">Code / name · owner · status · due date</span></div><div class="bc-register"><div class="bc-row bc-colhead"><span>Deliverable</span><span>Owner</span><span>Status</span><span>Due date</span></div>${docs.map(d=>`<button class="bc-row" data-doc="${d.id}" aria-label="Open workspace ${d.id} ${d.name}"><span class="bc-item"><strong>${d.id} — ${d.name}</strong><span class="bc-sub">${d.type} · Rev. ${d.revision}</span></span><span>${d.owner}</span><span>${badge(d.status)}</span><span class="bc-date bc-sub">${d.date}</span></button>`).join('')}</div><div class="bc-action-note">${state.role==='reviewer'?'For you: review A-101 and add markups to the sheet.':state.role==='contributor'?'For you: address the A-101 comments and prepare A-102.':'For you: assign deliverable owners, reviewers and due dates.'}</div>`;
+      } else if(state.screen==='overview'){
+        content.innerHTML=`<h2>What needs your attention</h2><p class="bc-sub">Park Residences · content you can access</p><div class="bc-box"><h3>Awaiting your action</h3>${line('A-101 — Ground floor','Version v3 is ready for review.',`<button class="bc-btn" data-doc="A-101" data-open-tab="review">Open sheet</button>`)}${line('A-102 — First floor','In progress · Arta · due 19 November',badge('In progress'))}</div><h3>Recent activity</h3>${line('A-101 version v3 was published','Arta · today')}${line('Updated survey added','Input for A-101 · version v2')}`;
+      } else if(state.screen==='tasks'){
+        content.innerHTML=`<h2>Tasks</h2><p class="bc-sub">Assigned to me · linked to the relevant deliverable and model</p><div class="bc-box">${line('Check the door opening','A-101 · Architecture model · markup 01',`<button class="bc-btn" data-doc="A-101" data-open-tab="review">Open markup</button>`)}${line('Confirm facade materials','General project task',badge('Ready for review'))}</div>`;
+      } else if(state.screen==='files'){
+        renderFiles();
+      } else if(state.screen==='models'){
+        renderModels();
+        const picker=root.querySelector('.bc-scene-picker');if(picker)picker.open=!!scenePickerWasOpen;
+      } else if(state.screen==='chat'){
+        content.innerHTML=`<h2>Conversations</h2><p class="bc-sub">Each conversation shows its audience and context</p><div class="bc-box">${line('Project coordination','Project · selected team members')}${line('A-101 review','Discussion linked to the sheet and its markups',`<button class="bc-btn" data-doc="A-101" data-open-tab="review">Open context</button>`)}</div>`;
+      } else {
+        content.innerHTML=`<h2>Team</h2><p class="bc-sub">Access, discipline and responsibilities are defined separately</p><div class="bc-box">${line('Elira · Client','Access: Reviewer · responsibility: recheck A-101')}${line('Arta · Architect','Access: Contributor · responsibility: prepare sheets')}${line('Blerim · Coordinator','Access: Administrator · responsibility: coordinate deliverables')}</div>${state.role==='admin'?'<div class="bc-action-note">Administration: invitations, groups and project permissions.</div>':''}`;
+      }
+    }
+    function renderDoc(){
+      const d=docs.find(x=>x.id===state.selected),isSheet=d.id==='A-101';
+      let panel='';
+      if(state.tab==='progress')panel=`<div class="bc-box"><h3>Next step</h3><p>${isSheet?'Elira reviews version v3. Arta addresses the comments and publishes a response.':'The owner prepares the output by the due date in the register.'}</p><div class="bc-facts"><div><span class="bc-sub">Owner</span><strong>${d.owner}</strong></div><div><span class="bc-sub">Reviewer</span><strong>${isSheet?'Elira':'Not assigned'}</strong></div><div><span class="bc-sub">Due date</span><strong>${d.date}</strong></div></div></div>${isSheet?'<div class="bc-action-note">Updated input: Survey v2. The designer needs to assess its impact.</div>':'<p class="bc-sub">The deliverable workspace exists before the first file is uploaded.</p>'}`;
+      if(state.tab==='inputs')panel=`<div class="bc-box"><h3>Input materials</h3>${line('Architecture · v12','Source model linked to this deliverable',badge('Referenced version'))}${line('Survey · v2','Reference updated since the latest work version',badge('Impact assessment needed'))}${line('Client requirement · 05','Decision on the ground floor layout')}</div>`;
+      if(state.tab==='outputs')panel=isSheet?`<div class="bc-box"><h3>Work versions</h3>${line('v3 · PDF + DWG','Published by Arta · ready for review',`<button class="bc-btn" data-tab="review">View sheet</button>`)}${line('v2 · PDF + DWG','Source version for issue R01')}</div><div class="bc-box"><h3>Official revisions</h3>${line('R01 · Issued','Detailed Design-01 package · version v2',badge('Approved'))}</div><p class="bc-sub">Work version v3 has not yet been issued as a new official revision.</p>`:'<div class="bc-box"><h3>No published output yet</h3><p>The deliverable remains in the register with its owner and due date.</p></div>';
+      if(state.tab==='history')panel=`<div class="bc-box"><h3>Workspace history</h3><div class="bc-event">${isSheet?'Arta published v3 for review':'Owner assigned'}<div class="bc-sub">15 November · version and author recorded</div></div><div class="bc-event">${isSheet?'Markup 01 added to v2':'Preparation due date set'}<div class="bc-sub">14 November · change recorded</div></div><div class="bc-event">Deliverable registered: ${d.id}<div class="bc-sub">10 November · workspace created</div></div></div>`;
+      if(state.tab==='review')panel=isSheet?`<div class="bc-toolbar"><span>Sheet v3 · illustrative preview</span>${badge('Ready for recheck')}</div><div class="bc-review"><div class="bc-sheet"><div class="bc-sub">A-101 / GROUND FLOOR</div><div class="bc-plan" aria-label="Illustrative floor plan with markup 01"><div class="bc-room">Room</div><div class="bc-hall"></div><div class="bc-room">Room</div><div class="bc-room">Space</div><div class="bc-room">Space</div><button class="bc-mark" data-note="01" aria-label="Markup 01: check the door opening"><span>1</span></button></div><div class="bc-sub">Park Residences · A-101 · v3</div></div><aside class="bc-note"><h3>01 · Door opening</h3><p>Check the door swing against the clear passage width.</p><p class="bc-sub">Elira · original markup on v2<br>Arta · response in v3</p>${badge('Ready for recheck')}<div class="bc-lineitem"><div>Linked task<div class="bc-sub">The same issue also appears in the task list</div></div></div><p class="bc-sub">Displaying this markup on the Revit sheet is part of the proposed workflow.</p></aside></div>`:'<div class="bc-box"><h3>Review starts after publication</h3><p>Markups will be linked to the specific output version.</p></div>';
+      content.innerHTML=`<button class="bc-link bc-back" data-back="true">← Documentation register</button><h2>${d.id} — ${d.name}</h2><p class="bc-sub">Deliverable workspace · ${d.type} · Issued revision ${d.revision}</p>${badge(d.status)}<div class="bc-tabs" role="tablist" aria-label="Deliverable workspace">${Object.entries(tabs).map(([k,v])=>`<button id="bc-tab-${k}" role="tab" data-tab="${k}" aria-selected="${state.tab===k}" aria-controls="bc-detail">${v}</button>`).join('')}</div><section id="bc-detail" role="tabpanel" aria-labelledby="bc-tab-${state.tab}">${panel}</section>`;
+    }
+    root.addEventListener('click',event=>{
+      const b=event.target.closest('button');if(!b)return;
+      if(b.dataset.screen){state.screen=b.dataset.screen;state.selected=null;}
+      else if(b.dataset.collapse){state.collapsed=!state.collapsed;try{localStorage.setItem('bimchat-concept-menu-collapsed',String(state.collapsed));}catch{}}
+      else if(b.dataset.model){state.sceneModels=[b.dataset.model];state.chatModel=b.dataset.model;state.viewerOpen=true;state.modelView='all';state.screen='models';state.selected=null;}
+      else if(b.dataset.openModels){if(!state.selectedModels.length)return;state.sceneModels=[...state.selectedModels];state.viewerOpen=true;state.chatModel=state.sceneModels.length===1?state.sceneModels[0]:'project';state.modelView='all';}
+      else if(b.dataset.clearModels){state.selectedModels=[];}
+      else if(b.dataset.selectFiltered){state.selectedModels=[...new Set([...state.selectedModels,...filteredModels().map(m=>m.id)])];}
+      else if(b.dataset.modelGroup){const g=b.dataset.modelGroup;state.closedModelGroups=state.closedModelGroups.includes(g)?state.closedModelGroups.filter(x=>x!==g):[...state.closedModelGroups,g];}
+      else if(b.dataset.modelBack){state.selectedModels=[...state.sceneModels];state.viewerOpen=false;}
+      else if(b.dataset.modelView){state.modelView=b.dataset.modelView;}
+      else if(b.dataset.expandFolder){const id=b.dataset.expandFolder;state.expandedFolders=state.expandedFolders.includes(id)?state.expandedFolders.filter(x=>x!==id):[...state.expandedFolders,id];}
+      else if(b.dataset.folder){state.folder=b.dataset.folder;state.file=null;state.selected=null;state.screen='files';let f=folders.find(x=>x.id===state.folder);while(f){if(!state.expandedFolders.includes(f.id)&&folders.some(x=>x.parent===f.id))state.expandedFolders.push(f.id);f=folders.find(x=>x.id===f.parent);}}
+      else if(b.dataset.file){state.file=b.dataset.file;}
+      else if(b.dataset.doc){state.selected=b.dataset.doc;state.screen='documentation';state.tab=b.dataset.openTab||'progress';}
+      else if(b.dataset.tab){state.tab=b.dataset.tab;}
+      else if(b.dataset.back){state.selected=null;state.screen='documentation';}
+      else if(b.dataset.note){root.querySelector('.bc-note')?.scrollIntoView({block:'nearest'});return;}
+      else return;
+      render();persist();
+    });
+    root.addEventListener('input',event=>{
+      if(event.target.id!=='bc-model-search')return;
+      const position=event.target.selectionStart;state.modelSearch=event.target.value;render();
+      const input=root.querySelector('#bc-model-search');input.focus();if(position!==null)input.setSelectionRange(position,position);
+    });
+    root.addEventListener('change',event=>{
+      const el=event.target;
+      if(el.dataset.selectModel){state.selectedModels=el.checked?[...new Set([...state.selectedModels,el.dataset.selectModel])]:state.selectedModels.filter(id=>id!==el.dataset.selectModel);}
+      else if(el.dataset.sceneModel){state.sceneModels=el.checked?[...new Set([...state.sceneModels,el.dataset.sceneModel])]:state.sceneModels.filter(id=>id!==el.dataset.sceneModel);}
+      else if(el.id==='bc-chat-context'){state.chatModel=el.value;}
+      else if(el.id==='bc-model-building'){state.modelBuilding=el.value;}
+      else if(el.id==='bc-model-discipline'){state.modelDiscipline=el.value;}
+      else return;
+      render();persist();
+    });
+    roleSelect.addEventListener('change',()=>{state.role=roleSelect.value;render();persist();});
+    window.addEventListener('openai:set_globals',event=>{if(event.detail?.globals?.widgetState){restore(event.detail.globals.widgetState);render();}});
+    render();
+    if(globalThis.Tweak){const settings={spacing:'Comfortable'};const tweak=new Tweak({container:root,onChange:()=>{content.style.padding=settings.spacing==='Compact'?'17px':'25px';}});tweak.addSelect(settings,'spacing',{label:'Density',options:['Comfortable','Compact']});}
+  })();
+  </script>
+</div>
+</body></html>

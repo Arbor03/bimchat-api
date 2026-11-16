@@ -1,0 +1,9 @@
+{
+  "name": "bimchat-product-consolidation-candidate",
+  "private": true,
+  "scripts": {
+    "test:api": "node tests/collaboration-http.cjs",
+    "test:web": "node --test tests/attachment-content.test.mjs",
+    "manifest": "node record-manifest.cjs"
+  }
+}
