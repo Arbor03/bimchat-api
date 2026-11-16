@@ -2,13 +2,21 @@
 const crypto=require('node:crypto'),scope=require('./scoped-api-v11/scope.cjs'),content=require('./scoped-api-v11/content-pins.cjs');
 const policy=require('./product-model-stream-policy.cjs'),proof=require('./ephemeral-attempt-v1/device-proof.cjs'),{need}=scope;
 const names=['users.dat','editingperms.dat','editingdeltas.dat','editingrequests.dat','worksetperms.dat'];
+function baselineShape(review){
+ need(review.nativeStreamSchema===undefined||review.nativeStreamSchema===3||review.nativeStreamSchema===4,'STREAM_NATIVE_SCHEMA');
+ if(review.nativeStreamSchema!==4)return {names,validate:policy.pins};
+ const model=review.centralPath.replace(/\\/g,'/').split('/').pop();
+ return {names:require('./scoped-api-v11/direct/protocol.cjs').nativeNames(model),validate:require('./product-native-stream-policy.cjs')(null,model).pins};
+}
 function inventory(review,rows){
+ const {names}=baselineShape(review);
  const selected=rows.filter(f=>f.project_id===review.projectId&&scope.group(review.centralPath,f.relative_path));scope.unique(selected.map(f=>f.relative_path));
  need(selected.some(f=>f.id===review.fileId&&scope.equal(f.relative_path,review.centralPath)),'STREAM_BASELINE_MODEL');
  for(const name of names)need(selected.filter(f=>scope.equal(f.relative_path,review.centralPath.replace(/\.rvt$/i,'')+'_backup/'+name)).length===1,'STREAM_BASELINE_INCOMPLETE');
  return selected;
 }
 async function verifiedSnapshot(c,review,r2,rows,cacheBase=false){
+ const {names,validate}=baselineShape(review);
  const selected=inventory(review,rows),manifest=[];let users;
  for(const f of selected){const pin=await content.load(c,f.b2_key);need(pin.size===Number(f.file_size),'STREAM_BASELINE_CATALOG_SIZE');
   // Conditional GET validates actual content, never ETag-as-hash assumptions.
@@ -19,14 +27,18 @@ async function verifiedSnapshot(c,review,r2,rows,cacheBase=false){
   else if(typeof r2.verify==='function'&&!isUsers){const actual=await r2.verify(pin);need(actual.size===pin.size&&actual.sha256===pin.sha256,'STREAM_BASELINE_R2_CONTENT');}
   else{bytes=await r2.readVerified(pin);need(bytes.length===pin.size&&policy.sha(bytes)===pin.sha256,'STREAM_BASELINE_R2_CONTENT');}
   manifest.push({fileId:f.id,path:f.relative_path,version:f.current_version,...pin});
-  if(isUsers&&bytes)users=bytes.toString('base64');
+  if(isUsers&&bytes){
+   if(review.nativeStreamSchema===4){users={length:bytes.length,sha256:policy.sha(bytes)};await require('./product-stream-users.cjs')({}).importStream(c,review.fileId,users,require('node:stream').Readable.from([bytes]));}
+   else users=bytes.toString('base64');
+  }
  }
- const pins={files:names.map(name=>{const f=manifest.find(x=>scope.equal(x.path,review.centralPath.replace(/\.rvt$/i,'')+'_backup/'+name));return {name,length:f.size,sha256:f.sha256};}),users};policy.pins(pins);return {manifest,pins};
+ const pins={files:names.map(name=>{const f=manifest.find(x=>scope.equal(x.path,review.centralPath.replace(/\.rvt$/i,'')+'_backup/'+name));return {name,length:f.size,sha256:f.sha256};}),users};validate(pins);return {manifest,pins};
 }
 // Called inside the normal completed-Sync publication transaction after its
 // writer fence and authenticated publisher have been checked. Sequence continues;
 // offline participants keep their existing cursor and receive a baseline event.
 async function advance(c,{review,source,publicationId,snapshot}){
+ need(review.nativeStreamSchema!==4,'STREAM_NATIVE_SYNC_BASELINE_DISABLED');
  policy.pins(snapshot.pins);need(Array.isArray(snapshot.manifest)&&snapshot.manifest.length>=6,'STREAM_BASELINE_MANIFEST');
  scope.unique(snapshot.manifest.map(f=>f.path));for(const f of snapshot.manifest)content.validate(f);
  need(snapshot.manifest.some(f=>f.fileId===review.fileId&&scope.equal(f.path,review.centralPath)),'STREAM_BASELINE_MODEL');
@@ -67,7 +79,7 @@ module.exports=function({pool,r2,review,writerInventoryDigest}){
   need(review.participantMode==='independent'&&review.initialBaselineApproved===true&&r2&&typeof r2.seal==='function'&&typeof r2.readVerified==='function','STREAM_INITIAL_APPROVAL');
   const c=await pool.connect();let id;try{
    await c.query('BEGIN');await scope.lock(c,review.projectId);
-   const existing=(await c.query('SELECT epoch,sequence FROM bimchat_direct_ownership.model_streams WHERE file_id=$1',[review.fileId])).rows[0];if(existing){await c.query('COMMIT');return {ready:true,existing:true};}
+   const existing=(await c.query('SELECT epoch,sequence,baseline,head FROM bimchat_direct_ownership.model_streams WHERE file_id=$1',[review.fileId])).rows[0];if(existing){if(review.nativeStreamSchema===4){baselineShape(review).validate(existing.baseline);baselineShape(review).validate(existing.head);}await c.query('COMMIT');return {ready:true,existing:true};}
    need(!(await c.query('SELECT 1 FROM file_locks WHERE cloud_file_id=$1',[review.fileId])).rowCount,'STREAM_INITIAL_SYNC_ACTIVE');await drain(c,review);
    const scopes=await scope.scopes(c,review.projectId);need(!scopes.some(s=>scope.overlap(s.central_path,review.centralPath)),'STREAM_INITIAL_EXISTING_SCOPE');
    const rows=(await c.query('SELECT id,project_id,relative_path,b2_key,current_version,file_size FROM cloud_files WHERE project_id=$1 ORDER BY id FOR UPDATE',[review.projectId])).rows;inventory(review,rows);

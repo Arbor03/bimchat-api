@@ -15,8 +15,15 @@ module.exports=function({rawPool,r2,signUpload}){
    const exists=(await c.query("SELECT to_regclass('bimchat_direct_ownership.model_streams') present")).rows[0]?.present;
    if(exists)need(!(await c.query('SELECT 1 FROM bimchat_direct_ownership.model_streams WHERE project_id=$1 AND file_id=$2',[s.project_id,s.file_id])).rowCount,'OWNERSHIP_AGENT_ONLY');
   }
+  const log=s.central_path.replace(/\\/g,'/').split('/').pop().replace(/\.rvt$/i,'.slog');
+  if(scope.equal(path,s.central_path.replace(/\.rvt$/i,'')+'_backup/'+log)){
+   // The same classification is checked both when issuing a URL and when
+   // confirming it: a pre-enrollment upload cannot later replace native SLOG.
+   const blocked=await require('./product-ownership-download.cjs')(c,{project_id:project,relative_path:path});
+   need(!blocked,blocked?.status===409?'OWNERSHIP_AGENT_ONLY':'OWNERSHIP_UPLOAD_SCOPE_UNRESOLVED');
+  }
   need((await c.query('SELECT 1 FROM project_members WHERE project_id=$1 AND user_email=$2 FOR SHARE',[project,req.user.email])).rowCount===1,'UPLOAD_RECEIPT_MEMBERSHIP');
-  need(Number.isSafeInteger(req.body.fileSize)&&req.body.fileSize>=0&&req.body.fileSize<=64*1024*1024,'UPLOAD_RECEIPT_SIZE');return s;
+  need(Number.isSafeInteger(req.body.fileSize)&&req.body.fileSize>=0,'UPLOAD_RECEIPT_SIZE');return s;
  }
  async function catalog(c,project,path){const rows=(await c.query('SELECT id,current_version,b2_key FROM cloud_files WHERE project_id=$1 AND lower(replace(relative_path,chr(92),chr(47)))=$2 FOR UPDATE',[project,scope.key(path)])).rows;need(rows.length<=1,'UPLOAD_RECEIPT_CATALOG_AMBIGUOUS');return rows[0]||null;}
  async function issue(c,req){const s=await selected(c,req);if(!s)return null;const b=req.body,prior=await catalog(c,s.project_id,b.relativePath),id=crypto.randomUUID(),key='direct-upload/'+s.project_id+'/'+id;
@@ -26,9 +33,10 @@ module.exports=function({rawPool,r2,signUpload}){
   return {success:true,uploadUrl:await signUpload(key),b2Key:key,expiresIn:3600};
  }
  async function confirm(c,req){const s=await selected(c,req);if(!s)return null;throw Object.assign(Error('UPLOAD_CONFIRM_PROTOCOL_REQUIRED'),{status:409});}
- async function finalize(c,req,s,r,prior,sealed){
+ async function finalize(c,req,s,r,prior,sealed,batchCommit=false){
   const b=req.body;
   need(sealed.contentVerified===true&&sealed.size===Number(r.expected_size)&&sealed.key!==r.upload_key,'UPLOAD_RECEIPT_CONTENT');pins.validate(sealed);
+  if(r.sync_batch_id&&!batchCommit)return require('./product-sync-batches.cjs').stage(c,r,sealed);
   await pins.insert(c,sealed);await pins.complete(c,sealed);
   let fileId,version;
   if(prior){
@@ -36,8 +44,9 @@ module.exports=function({rawPool,r2,signUpload}){
    const updated=await c.query('UPDATE cloud_files SET b2_key=$1,file_size=$2,current_version=current_version+1,uploaded_by=$3,last_modified=NOW() WHERE id=$4 AND current_version=$5 AND b2_key=$6 RETURNING id,current_version',[sealed.key,sealed.size,req.user.email,prior.id,prior.current_version,prior.b2_key]);need(updated.rowCount===1,'UPLOAD_RECEIPT_CATALOG_RACE');fileId=updated.rows[0].id;version=updated.rows[0].current_version;
   }else{const added=await c.query('INSERT INTO cloud_files(project_id,file_name,relative_path,b2_key,file_size,uploaded_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,current_version',[s.project_id,b.fileName,b.relativePath,sealed.key,sealed.size,req.user.email]);need(added.rowCount===1,'UPLOAD_RECEIPT_CATALOG_INSERT');fileId=added.rows[0].id;version=added.rows[0].current_version;}
   need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_receipts SET state='consumed',sealed_key=$2 WHERE id=$1 AND state='issued' RETURNING id",[r.id,sealed.key])).rowCount===1,'UPLOAD_RECEIPT_COMMIT_EXPIRED');
+  if(!batchCommit)await require('./product-catalog-notifications.cjs').publish(c);
   return {success:true,fileId,version,message:'Uploaded'};
  }
  const managed=require('./product-upload-seal-jobs.cjs')({rawPool,r2,selected,catalog,finalize});
- return {issue,confirm,confirmManaged:managed.confirm};
+ return {issue,confirm,confirmManaged:managed.confirm,selected,catalog,finalize};
 };

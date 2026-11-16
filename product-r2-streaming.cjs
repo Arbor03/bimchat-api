@@ -24,12 +24,13 @@ module.exports=function({client,bucket,HeadObjectCommand,GetObjectCommand,PutObj
  }
  async function seal(cap,reserve){need(cap&&Number.isSafeInteger(cap.project_id)&&cap.project_id>0&&typeof cap.object_key==='string'&&typeof reserve==='function','R2_SEAL_CONTEXT');
   const folder=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-r2-seal-')),file=path.join(folder,'content');let body;
-  try{const head=await client.send(new HeadObjectCommand({Bucket:bucket,Key:cap.object_key}));const actual=await consume(cap.object_key,head.ETag,file);
+  const progress=async phase=>{if(typeof cap.progress==='function')await cap.progress(phase);};
+  try{await progress('source-head');const head=await client.send(new HeadObjectCommand({Bucket:bucket,Key:cap.object_key}));await progress('source-read');const actual=await consume(cap.object_key,head.ETag,file);
    if(cap.expected)need(actual.size===cap.expected.size&&actual.sha256===cap.expected.sha256,'R2_EXPECTED_CONTENT_CHANGED');
    const key='direct-sealed/'+cap.project_id+'/'+crypto.randomUUID(),record={provider:'r2',key,...actual,sourceKey:cap.object_key,sourceEtag:head.ETag};
    need(await reserve(Object.freeze({...record}))===true,'R2_DURABLE_RESERVATION_REQUIRED');
-   body=fs.createReadStream(file,{highWaterMark:65536});const result=await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:body,ContentLength:actual.size,ContentType:'application/octet-stream',CacheControl:'no-store',IfNoneMatch:'*'}));
-   const pin={...record,etag:result.ETag};await verify(pin);return {...pin,contentVerified:true,immutable:false};
+   await progress('sealed-put');body=fs.createReadStream(file,{highWaterMark:65536});const result=await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:body,ContentLength:actual.size,ContentType:'application/octet-stream',CacheControl:'no-store',IfNoneMatch:'*'}));
+   const pin={...record,etag:result.ETag};await progress('sealed-verify');await verify(pin);return {...pin,contentVerified:true,immutable:false};
   }finally{if(body){body.destroy();await new Promise(resolve=>{if(body.closed)return resolve();body.once('close',resolve);});}await fsp.rm(file,{force:true});await fsp.rmdir(folder);}
  }
  async function withVerifiedStream(pin,work){

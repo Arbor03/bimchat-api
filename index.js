@@ -24,6 +24,9 @@ const rawPool = new Pool({
 });
 
 const pool = require('./product-writer-fences.cjs')({enabled:ownershipEnabled,app,rawPool});
+const catalogNotifications = require('./product-catalog-notifications.cjs')({pool:rawPool});
+app.use(catalogNotifications.middleware);
+catalogNotifications.mount(app,authenticateToken);
 
 // ==================== CLOUDINARY CONFIG ====================
 
@@ -93,9 +96,11 @@ const upload = multer({
 
 const ownershipUploads = ownershipEnabled && b2Client ? require('./product-upload-receipts.cjs')({
     rawPool,
-    r2: require('./ephemeral-attempt-v1/r2-content.cjs')({client:b2Client,bucket:process.env.B2_BUCKET_NAME,HeadObjectCommand,GetObjectCommand,PutObjectCommand}),
+    r2: require('./product-r2-streaming.cjs')({client:b2Client,bucket:process.env.B2_BUCKET_NAME,HeadObjectCommand,GetObjectCommand,PutObjectCommand}),
     signUpload: key => getSignedUrl(b2Client,new PutObjectCommand({Bucket:process.env.B2_BUCKET_NAME,Key:key,ContentType:'application/octet-stream'}),{expiresIn:3600})
 }) : null;
+
+if (ownershipUploads) require('./product-sync-batches.cjs')({rawPool,uploads:ownershipUploads}).mount(app,authenticateToken);
 
 // Email transporter for password reset
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -778,6 +783,7 @@ app.post('/drive/files/confirm-upload', authenticateToken, async (req, res) => {
         if (ownershipUploads) {
             if (req.body.confirmProtocol === 2 && String(b2Key).startsWith('direct-upload/')) {
                 const result = await ownershipUploads.confirmManaged(req);
+                if(result.body.publicationState==='staged')res.locals.catalogDeferred=true;
                 return res.status(result.status).json(result.body);
             }
             const scoped = await ownershipUploads.confirm(pool, req);
@@ -854,6 +860,12 @@ app.get('/drive/files/:fileId/download-url', authenticateToken, async (req, res)
         );
         if (memberCheck.rows.length === 0) {
             return res.status(403).json({ error: 'Not a member of this project' });
+        }
+
+        const ownershipDownload = await require('./product-ownership-download.cjs')(pool, file);
+        if (ownershipDownload) {
+            res.set('Cache-Control', 'no-store');
+            return res.status(ownershipDownload.status).json({ error: ownershipDownload.error });
         }
 
         const command = new GetObjectCommand({

@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "updatedAt": "2026-11-16T12:19:26.655Z",
+  "status": "verified_recovery_source",
+  "projectId": "f41cddab-d329-44f8-9b25-b3923f8980f9",
+  "serviceId": "2b01fb7c-272b-40a2-ac8b-6aa9d7785028",
+  "environment": "production",
+  "recoveredDeployment": "02a95903-38fe-456f-ae0b-3f7f42bcfad4",
+  "baselineDeployment": "56ae761e-1e84-4c9a-94f2-29f8e73af130",
+  "api": "https://bimchat-api-production.up.railway.app",
+  "driveBuild": "16DD29C6AD5C6C8161720C59F70562E9A759F7E72E318DE3DA0AC23939EF3511",
+  "publicConfiguration": {
+    "BIMCHAT_PRODUCT_OWNERSHIP": "1",
+    "BIMCHAT_OWNERSHIP_REVIEW_PATH": "/app/ownership-review.json",
+    "BIMCHAT_OWNERSHIP_REVIEW_DIGEST": "A73DCCC666B2122130942B26197F4F3804D233EEEC26383218A6BE3709E348D8",
+    "BIMCHAT_OWNERSHIP_WRITER_DIGEST": "35B1C978D6ED42BF441E159B5BB97FD0ADA7DDBD815396ABB047E64FF45131AA"
+  },
+  "notes": [
+    "This contains public reviewed pins only. Keep all credentials in the deployment secret store.",
+    "Source changes require a reviewed manifest and matching configuration before publication.",
+    "Database contents and stored project files are not restored from this Git repository.",
+    "Unreleased product and design work is retained separately from the production branch."
+  ]
+}

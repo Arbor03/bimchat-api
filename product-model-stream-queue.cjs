@@ -3,10 +3,11 @@ const proof=require('./ephemeral-attempt-v1/device-proof.cjs'),{need}=require('.
 const protocol=require('./scoped-api-v11/direct/protocol.cjs');
 // Intake and drain have separate per-model PostgreSQL locks. Slow processing
 // cannot reorder committed arrivals or keep later requests only in RAM.
-module.exports=function({pool,store}){
+module.exports=function({pool,store,nativeModel=null}){
  async function enqueue(auth,body,assembled=false,reserving=false){
   need(assembled||Buffer.byteLength(proof.canonical(body))<=1048576,'STREAM_TRANSPORT_BOUND');
-  protocol.validateStream(body?.patch);need(body.patch.SourceSession===auth.sessionId,'STREAM_SOURCE_EPOCH');
+  if(nativeModel===null)protocol.validateStream(body?.patch);else protocol.validateNativeStream(body?.patch,nativeModel);
+  need(body.patch.SourceSession===auth.sessionId,'STREAM_SOURCE_EPOCH');
   const digest=proof.hash(body),c=await pool.connect();try{await c.query('BEGIN');
    await c.query('SELECT pg_advisory_xact_lock(194811, $1)',[auth.fileId]);
    const session=(await c.query('SELECT s.session_id FROM bimchat_direct_ownership.model_stream_sessions s JOIN bimchat_direct_ownership.model_stream_participants p USING(participant_id) JOIN bimchat_direct_ownership.model_streams m ON m.file_id=p.file_id JOIN project_members pm ON pm.project_id=m.project_id AND pm.user_email=p.email WHERE s.session_id=$1 AND p.file_id=$2 AND p.email=$3 AND p.device_id=$4 AND s.key_digest=$5 AND s.revoked=false AND s.expires_at>clock_timestamp()',[auth.sessionId,auth.fileId,auth.email,auth.deviceId,auth.keyDigest])).rows[0];need(session,'STREAM_SESSION');
@@ -31,6 +32,7 @@ module.exports=function({pool,store}){
     result={accepted:false,reason:e.message};
    }
    await c.query("UPDATE bimchat_direct_ownership.model_stream_inbox SET state=$2,result=$3 WHERE arrival=$1 AND state='queued'",[row.arrival,result.accepted?'accepted':'rejected',JSON.stringify(result)]);
+   await require('./product-stream-notifications.cjs').publish(c,fileId);
   }
  }finally{try{if(locked)await c.query('SELECT pg_advisory_unlock(194812,$1)',[fileId]);}finally{c.release();}}}
  async function status(auth,operationId){const c=await pool.connect();try{const row=(await c.query('SELECT file_id,source_auth,arrival,state,result FROM bimchat_direct_ownership.model_stream_inbox WHERE operation_id=$1',[operationId])).rows[0];need(row&&row.file_id===auth.fileId&&row.source_auth.email===auth.email&&row.source_auth.deviceId===auth.deviceId,'STREAM_OPERATION_SCOPE');return {operationId,arrival:String(row.arrival),state:row.state,result:row.result};}finally{c.release();}}

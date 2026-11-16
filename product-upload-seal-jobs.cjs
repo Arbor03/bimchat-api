@@ -14,25 +14,31 @@ module.exports=function({rawPool,r2,selected,catalog,finalize}){
   });
  }
  async function work(req,r,owner){
+  let heartbeat,lost=null,renewing=false;
+  const renew=async()=>{if(!r.sync_batch_id)return;need((await rawPool.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET lease_until=clock_timestamp()+interval '60 seconds' WHERE receipt_id=$1 AND owner_id=$2 AND state IN ('claimed','sealing') AND lease_until>clock_timestamp() RETURNING receipt_id",[r.id,owner])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');};
   try{
+   if(r.sync_batch_id){heartbeat=setInterval(()=>{if(renewing)return;renewing=true;renew().catch(e=>{lost=e;}).finally(()=>{renewing=false;});},10000);heartbeat.unref?.();}
    // No project transaction or SQL connection is retained across either network await.
    const progress=phase=>co.transaction(rawPool,async c=>{need(['source-head','source-read','sealed-put','sealed-verify'].includes(phase),'UPLOAD_SEAL_PHASE');need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET network_phase=$3,updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state IN ('claimed','sealing') RETURNING receipt_id",[r.id,owner,phase])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');});
    const pin=await r2.seal({object_key:r.upload_key,project_id:r.project_id,relative_path:r.relative_path,progress},p=>reserve(r,owner,p));
+   if(lost)throw lost;await renew();
    need(pin.contentVerified===true&&pin.size===Number(r.expected_size),'UPLOAD_RECEIPT_CONTENT');
    await co.transaction(rawPool,async c=>{need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='verified',verified_pin=$3::jsonb,updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state='sealing' AND destination_key=$4 AND expected_sha256=$5 AND expected_size=$6 RETURNING receipt_id",[r.id,owner,JSON.stringify(pin),pin.key,pin.sha256,pin.size])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');});
    await guarded(req,async c=>{
     const s=await selected(c,req);need(s,'UPLOAD_RECEIPT_SCOPE_REQUIRED');
-    const fresh=(await c.query('SELECT * FROM bimchat_direct_ownership.normal_upload_receipts WHERE id=$1 FOR UPDATE',[r.id])).rows[0];bound(fresh,s,req);need(fresh.state==='issued','UPLOAD_RECEIPT_STATE_CHANGED');
-    const job=(await c.query('SELECT * FROM bimchat_direct_ownership.normal_upload_seal_jobs WHERE receipt_id=$1 FOR UPDATE',[r.id])).rows[0];need(job&&job.owner_id===owner&&job.state==='verified','UPLOAD_SEAL_OWNER_CHANGED');
+    const fresh=(await c.query('SELECT * FROM bimchat_direct_ownership.normal_upload_receipts WHERE id=$1 FOR UPDATE',[r.id])).rows[0];bound(fresh,s,req);
+    const job=(await c.query('SELECT * FROM bimchat_direct_ownership.normal_upload_seal_jobs WHERE receipt_id=$1 FOR UPDATE',[r.id])).rows[0];
+    if(fresh.sync_batch_id&&job?.state==='completed'&&job.result?.success===true&&['issued','consumed'].includes(fresh.state))return;
+    need(fresh.state==='issued','UPLOAD_RECEIPT_STATE_CHANGED');need(job&&job.owner_id===owner&&job.state==='verified','UPLOAD_SEAL_OWNER_CHANGED');
     const prior=await catalog(c,s.project_id,req.body.relativePath);priorMatches(prior,fresh);
     const result=await finalize(c,req,s,fresh,prior,pin);
     need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='completed',result=$3::jsonb,updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state='verified' RETURNING receipt_id",[r.id,owner,JSON.stringify(result)])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');
    });
   }catch(e){
    // Includes uncertain PUT, DB commit ambiguity, or changed catalog. Never repeat PUT.
-   try{await co.transaction(rawPool,async c=>{await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='uncertain',updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state IN ('claimed','sealing','verified')",[r.id,owner]);});}catch{}
+   try{await co.transaction(rawPool,async c=>{await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='uncertain',failure_code=$3,updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state IN ('claimed','sealing','verified')",[r.id,owner,e.message==='BATCH_CONTENT_MISMATCH'?'BATCH_CONTENT_MISMATCH':null]);});}catch{}
    console.warn(JSON.stringify({event:'normal-upload-seal-unresolved',receiptId:r.id,stage:'seal-or-finalize',category:/^UPLOAD_[A-Z_]+$/.test(e.message||'')?e.message:'UNCLASSIFIED'}));
-  }
+  }finally{if(heartbeat)clearInterval(heartbeat);}
  }
  async function confirm(input){
   // Keep only the already-authenticated identity and immutable request values, no token.
@@ -45,13 +51,24 @@ module.exports=function({rawPool,r2,selected,catalog,finalize}){
    const j=(await c.query('SELECT * FROM bimchat_direct_ownership.normal_upload_seal_jobs WHERE receipt_id=$1 FOR UPDATE',[r.id])).rows[0];
    // Old receipts may already have an R2 operation. Never infer permission to restart it.
    need(j,'UPLOAD_SEAL_LEGACY_RECONCILIATION_REQUIRED');
-   if(j.state==='completed'){need(r.state==='consumed'&&j.result?.success===true,'UPLOAD_SEAL_RESULT_INVALID');return {status:200,body:{...j.result,publicationState:'committed'}};}
+   if(j.state==='completed'){need((r.state==='consumed'||(r.sync_batch_id&&r.state==='issued'&&j.result?.publicationState==='staged'))&&j.result?.success===true,'UPLOAD_SEAL_RESULT_INVALID');return {status:200,body:{...j.result,publicationState:r.sync_batch_id?'staged':'committed'}};}
    need(r.state==='issued','UPLOAD_RECEIPT_STATE_CHANGED');
-   if(j.state==='uncertain')return {status:409,body:{success:false,publicationState:'uncertain',receiptId:r.id}};
+   // Verified bytes survived the crash: finish the SQL stage, without another PUT.
+   if(r.sync_batch_id&&j.state==='verified'){
+    const prior=await catalog(c,s.project_id,req.body.relativePath);priorMatches(prior,r);
+    const result=await finalize(c,req,s,r,prior,j.verified_pin);
+    need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='completed',result=$3::jsonb,updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state='verified' RETURNING receipt_id",[r.id,j.owner_id,JSON.stringify(result)])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');
+    return {status:200,body:result};
+   }
+   if(r.sync_batch_id&&['claimed','sealing'].includes(j.state)){
+    const expired=await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='uncertain',updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state IN ('claimed','sealing') AND lease_until IS NOT NULL AND lease_until<=clock_timestamp() RETURNING receipt_id",[r.id,j.owner_id]);
+    if(expired.rowCount===1)return {status:409,body:{success:false,publicationState:'uncertain',receiptId:r.id}};
+   }
+   if(j.state==='uncertain')return {status:409,body:{success:false,publicationState:'uncertain',receiptId:r.id,...(j.failure_code?{error:j.failure_code}:{})}};
    if(j.state!=='ready')return {status:202,body:{success:false,publicationState:'pending',receiptId:r.id}};
    need(+new Date(r.server_now)<+new Date(r.expires_at),'UPLOAD_RECEIPT_EXPIRED');
    const prior=await catalog(c,s.project_id,req.body.relativePath);priorMatches(prior,r);
-   const owner=crypto.randomUUID();need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='claimed',owner_id=$2,updated_at=clock_timestamp() WHERE receipt_id=$1 AND state='ready' RETURNING receipt_id",[r.id,owner])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');
+   const owner=crypto.randomUUID();need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='claimed',owner_id=$2,lease_until=clock_timestamp()+interval '60 seconds',updated_at=clock_timestamp() WHERE receipt_id=$1 AND state='ready' RETURNING receipt_id",[r.id,owner])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');
    return {status:202,body:{success:false,publicationState:'pending',receiptId:r.id},start:{r,owner}};
   });
   if(outcome.start){const {r,owner}=outcome.start;setImmediate(()=>{void work(req,r,owner);});delete outcome.start;}

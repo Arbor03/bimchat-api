@@ -28,12 +28,12 @@ function validate(p,stream=false){
  for(const side of ['Pre','Post']){const actual=crypto.createHash('sha256').update(p.Files.map(f=>f.Name+':'+f[side+'Length']+':'+f[side+'Hash']).join('\n')).digest('hex').toUpperCase();need(actual===p[side+'Bundle'],'Bundle manifest mismatch',400);}
  return digest(p);
 }
-function validateImage(p){
+function validateImage(p,expectedNames=names){
  need(p&&typeof p.Model==='string'&&/^[^\\/:\x00-\x1f]{1,180}\.rvt$/i.test(p.Model),'STREAM_IMAGE_MODEL');
  need(uuid.test(p.Generation)&&uuid.test(p.OperationId)&&uuid.test(p.SourceSession),'STREAM_IMAGE_CONTEXT');
  need(Number.isSafeInteger(p.PreviousSequence)&&p.PreviousSequence>=0&&p.Sequence===p.PreviousSequence+1,'STREAM_IMAGE_SEQUENCE');
- need(Array.isArray(p.Files)&&p.Files.length===5,'STREAM_IMAGE_FILES');
- p.Files.forEach((f,i)=>need(f&&f.Name===names[i]&&Number.isSafeInteger(f.PreLength)&&f.PreLength>=0&&Number.isSafeInteger(f.PostLength)&&f.PostLength>=0&&hash.test(f.PreHash)&&hash.test(f.PostHash),'STREAM_IMAGE_PIN'));
+ need(Array.isArray(p.Files)&&p.Files.length===expectedNames.length,'STREAM_IMAGE_FILES');
+ p.Files.forEach((f,i)=>need(f&&f.Name===expectedNames[i]&&Number.isSafeInteger(f.PreLength)&&f.PreLength>=0&&Number.isSafeInteger(f.PostLength)&&f.PostLength>=0&&hash.test(f.PreHash)&&hash.test(f.PostHash),'STREAM_IMAGE_PIN'));
  for(const side of ['Pre','Post'])need(crypto.createHash('sha256').update(p.Files.map(f=>f.Name+':'+f[side+'Length']+':'+f[side+'Hash']).join('\n')).digest('hex').toUpperCase()===p[side+'Bundle'],'STREAM_IMAGE_BUNDLE');
  need(p.PreBundle!==p.PostBundle,'STREAM_IMAGE_UNCHANGED');return digest(p);
 }
@@ -53,4 +53,16 @@ function acknowledge(head,tx,sid,body){
  need(body.postBundle===tx.payload.PostBundle&&body.sequence===Number(tx.sequence),'Postimage/sequence acknowledgment mismatch');return 'acknowledged';
 }
 
-module.exports={canonical,digest,validate,validateStream:p=>validate(p,true)};
+// Explicit native entry point. Legacy routes deliberately cannot accept schema 4
+// until baseline, checkpoint, admission and delta transport are upgraded together.
+function nativeNames(model){
+ need(typeof model==='string'&&/^[^\\/:\x00-\x1f]{1,180}\.rvt$/i.test(model),'STREAM_NATIVE_MODEL');
+ return names.concat(model.slice(0,-4)+'.slog');
+}
+function validateNativeStream(p,model){
+ need(p&&p.Schema===4&&p.Model===model,'STREAM_NATIVE_SCHEMA');
+ const result=validateImage(p,nativeNames(model));
+ for(const f of p.Files)need(Number.isSafeInteger(f.DeltaLength)&&f.DeltaLength>=0&&Number.isSafeInteger(f.DeltaRecords)&&f.DeltaRecords>=0&&hash.test(f.DeltaHash),'STREAM_DELTA_METADATA');
+ return result;
+}
+module.exports={canonical,digest,validate,validateStream:p=>validate(p,true),nativeNames,validateNativeStream};
