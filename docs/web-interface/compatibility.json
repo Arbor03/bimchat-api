@@ -1,0 +1,21 @@
+{
+  "utc": "2026-11-16T13:11:12.197Z",
+  "purpose": "Graphics update compatible with the current API",
+  "existingSource": "C:/Users/4/Desktop/bimchat-dashboard",
+  "authoritativeWeb": "web",
+  "productionApiChanged": false,
+  "securityCandidatePreservedAt": "development/product-consolidation",
+  "attachmentContract": "Existing deployed web behavior retained; protected-content migration remains unreleased",
+  "evidence": [
+    {
+      "file": "src/pages/Dashboard.jsx",
+      "existingAttachmentMarkupPreserved": true,
+      "markupSHA256": "5ae14229179d995f420aadab501ff6f1230600af3093737d947a9f02ebf69f87"
+    },
+    {
+      "file": "src/pages/Viewer.jsx",
+      "existingAttachmentMarkupPreserved": true,
+      "markupSHA256": "88c0c6e230e79cf21f5f483d156a6ca775066696f67c2d08be701a27aca42c60"
+    }
+  ]
+}
