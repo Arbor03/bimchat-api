@@ -6,7 +6,7 @@ const read=name=>JSON.parse(fs.readFileSync(path.join(root,name),'utf8').replace
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex').toUpperCase();
 const canonical=value=>Array.isArray(value)?'['+value.map(canonical).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}':JSON.stringify(value);
 const manifest=read('release/manifest.json'),release=read('release/production.json'),review=read('ownership-review.json');
-assert.equal(manifest.files.length,103,'Unexpected reviewed runtime inventory');
+assert.equal(manifest.files.length,108,'Unexpected reviewed runtime inventory');
 for(const file of manifest.files){
  assert(!path.isAbsolute(file.path)&&!file.path.split(/[\\/]/).includes('..'),'Invalid manifest path');
  assert.equal(hash(fs.readFileSync(path.join(root,file.path))),file.sha256,'Unreviewed runtime change: '+file.path);
@@ -16,7 +16,9 @@ assert.equal(release.publicConfiguration.BIMCHAT_OWNERSHIP_REVIEW_DIGEST,manifes
 assert.equal(release.publicConfiguration.BIMCHAT_OWNERSHIP_WRITER_DIGEST,review.writerInventoryDigest);
 assert.equal(release.driveBuild,manifest.newBuild);
 assert(review.participants.every(p=>p.agentBuild===release.driveBuild),'Client build mismatch');
+assert.equal(release.addinBuild,manifest.newAddin);
+assert(review.participants.every(p=>p.addinBuild===release.addinBuild),'Add-in build mismatch');
 if(process.argv.includes('--environment')){
  for(const [key,value] of Object.entries(release.publicConfiguration))assert.equal(process.env[key],value,'Deployment configuration mismatch: '+key);
 }
-console.log('Verified 103 runtime files, review digest, writer pin and client build.');
+console.log('Verified 108 runtime files, review digest, writer pin and client build.');

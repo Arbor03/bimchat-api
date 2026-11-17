@@ -24,7 +24,9 @@ async function resolve(c,req,p){let project,path=null;
     AND (cf.b2_key LIKE 'direct-sealed/%' OR EXISTS(SELECT 1 FROM file_versions fv WHERE fv.cloud_file_id=cf.id AND fv.b2_key LIKE 'direct-sealed/%')) LIMIT 1`,[project,path])).rowCount;
   scope.need(sealed===0,'SEALED_DELETE_REQUIRES_REVIEWED_RETENTION');
  }
- return {project,path};
+ const mapping={project,path};
+ await require('../archive-folders/legacy-guard.cjs').authorize(c,req,p,mapping);
+ return mapping;
 }
 function install(app,bridge){for(const method of ['get','post','put','patch','delete']){const original=app[method].bind(app);app[method]=function(url,...handlers){const p=policy(method,url);if(p&&handlers.length){const last=handlers.pop();handlers.push(bridge.wrap(last,(c,req)=>resolve(c,req,p),p));}return original(url,...handlers);};}}
 module.exports={install,policy,resolve};

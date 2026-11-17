@@ -1,13 +1,42 @@
 {
-  "utc": "2026-11-15T11:35:38.080Z",
-  "oldBuild": "214F1E3DCA81F8F5F2FE65E88989FA728463061E2D43710116232AA3E0AE0794",
-  "newBuild": "16DD29C6AD5C6C8161720C59F70562E9A759F7E72E318DE3DA0AC23939EF3511",
-  "oldDigest": "4C17B504FB5C54C4C302CFB2F129FEB0C808F50706F6A2E204A89C2CFC064431",
-  "newDigest": "A73DCCC666B2122130942B26197F4F3804D233EEEC26383218A6BE3709E348D8",
+  "utc": "2026-11-17T10:21:03.300Z",
+  "status": "release_prepared_not_deployed",
+  "oldBuild": "16DD29C6AD5C6C8161720C59F70562E9A759F7E72E318DE3DA0AC23939EF3511",
+  "newBuild": "1756338247207BCBAE62146C03EE1600839836B14E1CB812F1362A58D4A6144D",
+  "oldAddin": "DB428E5F034A60CD801DE9D0D06A11FEDAC55EE37FE19889378D1083EA664DDB",
+  "newAddin": "A19F17F7BC69D7AA8EB8429675F292106236926274B57B56EE09941060FB4AD6",
+  "oldDigest": "A73DCCC666B2122130942B26197F4F3804D233EEEC26383218A6BE3709E348D8",
+  "newDigest": "56412DF476FA77EFAD33AC40AC75C031F8999C3622C2FAD981F63CA934A8C0E9",
   "driverChanged": false,
-  "databaseMigration": false,
-  "serverBehaviorChanged": false,
+  "limits": [
+    "Uncertain non-SLOG mutations spanning session expiry still stop for reconciliation; no arbitrary-outage guarantee"
+  ],
   "files": [
+    {
+      "path": "archive-folders/legacy-guard.cjs",
+      "sha256": "0149AB8A45FDD481C5E8CFE063A17B711FA02CD77A1C4631A2B65951C49F8D5D",
+      "bytes": 3330
+    },
+    {
+      "path": "archive-folders/routes.cjs",
+      "sha256": "2B1FF90017876B7040E5B13EADAAF7C52087118041733AE9A79ABF97478E76BF",
+      "bytes": 1614
+    },
+    {
+      "path": "archive-folders/schema.sql",
+      "sha256": "E55FAF5E61331210DF19B3983ABD38E6359A059895C60901124A0CE86E19BB00",
+      "bytes": 1634
+    },
+    {
+      "path": "archive-folders/service.cjs",
+      "sha256": "C9F9E25DAD12D5931450A78BC6B1B1038968E53AE98DE10950FD28C8146C98C8",
+      "bytes": 17173
+    },
+    {
+      "path": "archive-folders/sync-policy.cjs",
+      "sha256": "9A50BE3C3477E15AF98D24A651B361CE3CBDE819CA5815C82871273DA2A1F5B0",
+      "bytes": 5673
+    },
     {
       "path": "ephemeral-attempt-v1/content-pins.cjs",
       "sha256": "A8556B947A79D3D8F0FF57FB50D6341C844E457B09998F9B13F875CF61EA742B",
@@ -60,8 +89,8 @@
     },
     {
       "path": "index.js",
-      "sha256": "4549C5B4182D2030C61BAF4113BF0E814DFCB4F35B0CDAEA945FDBC09B2235DC",
-      "bytes": 93579
+      "sha256": "30BD3D0D279190F0B9FE748E10B6ACD40FA8B9A04F9EB6A112E56F83A47D7E88",
+      "bytes": 93842
     },
     {
       "path": "native-readonly-preflight.sql",
@@ -70,13 +99,13 @@
     },
     {
       "path": "ownership-review.json",
-      "sha256": "F13352C98492038BA0A32A22DFBCEC5163F9893418F1B25C3493B60503761ACF",
+      "sha256": "C998348C2B2EB344748C225326E04AE403E11C2EE3C0A2869B6E04A89ED9DAFD",
       "bytes": 1038
     },
     {
       "path": "ownership-writer-inventory.json",
-      "sha256": "CBB65095088ABBF6378CFD6931F1C1DFFCE823B05DDDD82A033F0F9D046256B9",
-      "bytes": 10308
+      "sha256": "5CC9DF3363B62C9873D4759C72ABA3A754BEA9DF7C33D7CBBED7E7A3D8C9E0E3",
+      "bytes": 10685
     },
     {
       "path": "package-lock.json",
@@ -110,8 +139,13 @@
     },
     {
       "path": "product-catalog-notifications.cjs",
-      "sha256": "9E1ABCBBB296C16722D1EFD093F01749C37CD27E2BB84C64D10CB1E9A827EE40",
-      "bytes": 4852
+      "sha256": "F52516763805CA2A2EFA53A1306DE1DEB7612055F1218691F79BC2DC6D5E8F4E",
+      "bytes": 5646
+    },
+    {
+      "path": "product-delta-stream.cjs",
+      "sha256": "5FF546953D250FD42984B3DA9C2BB86AABF4D6FCCC208F8F3DEB31E966034036",
+      "bytes": 3875
     },
     {
       "path": "product-initial-baseline.cjs",
@@ -380,8 +414,8 @@
     },
     {
       "path": "scoped-api-v11/install-handlers.cjs",
-      "sha256": "D9B46E92F9A05A0B8B1345E42935CF2A828BD8FD5858B8F102F7CA8182824265",
-      "bytes": 3100
+      "sha256": "FCBA91B49C7F4E7CA244980590CAD9E531D46718059B2DD7B4A0ED1D64ABC79A",
+      "bytes": 3208
     },
     {
       "path": "scoped-api-v11/scope.cjs",
@@ -517,11 +551,8 @@
       "path": "synthetic-ownership/sessionStatus.cjs",
       "sha256": "BAB699AC62430BC0BEF5C8658A8D889167D47A75634018520A298056328260FE",
       "bytes": 1476
-    },
-    {
-      "path": "product-delta-stream.cjs",
-      "sha256": "5FF546953D250FD42984B3DA9C2BB86AABF4D6FCCC208F8F3DEB31E966034036",
-      "bytes": 3875
     }
-  ]
+  ],
+  "databaseMigration": "archive-folders/schema.sql",
+  "serverBehaviorChanged": true
 }

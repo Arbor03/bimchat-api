@@ -25,6 +25,7 @@ const rawPool = new Pool({
 
 const pool = require('./product-writer-fences.cjs')({enabled:ownershipEnabled,app,rawPool});
 const catalogNotifications = require('./product-catalog-notifications.cjs')({pool:rawPool});
+require('./archive-folders/routes.cjs')({app,pool:rawPool,auth:authenticateToken,enabled:process.env.BIMCHAT_ARCHIVE_FOLDERS==='1',ownershipEnabled});
 app.use(catalogNotifications.middleware);
 catalogNotifications.mount(app,authenticateToken);
 
@@ -707,7 +708,7 @@ app.get('/drive/files/:projectId', authenticateToken, async (req, res) => {
             [req.params.projectId]
         );
 
-        const files = result.rows;
+        const files = await require('./archive-folders/legacy-guard.cjs').filter(pool, Number(req.params.projectId), req.user.email, result.rows);
 
         if (b2Client) {
             await Promise.all(files.map(async (f) => {

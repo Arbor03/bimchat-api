@@ -25,7 +25,11 @@ module.exports=function({pool,timeoutMs=20000}){
    SELECT COALESCE((SELECT jsonb_agg(v ORDER BY v.id) FROM visible v),'[]'::jsonb) AS projects,
    COALESCE((SELECT jsonb_agg(x ORDER BY x.id) FROM (SELECT f.id,f.project_id,f.parent_id,f.name FROM project_folders f JOIN visible v ON v.id=f.project_id) x),'[]'::jsonb) AS folders,
    COALESCE((SELECT jsonb_agg(x ORDER BY x.id) FROM (SELECT f.id,f.project_id,f.relative_path,f.current_version,l.locked_by FROM cloud_files f JOIN visible v ON v.id=f.project_id LEFT JOIN file_locks l ON l.cloud_file_id=f.id) x),'[]'::jsonb) AS files`,[email]);
-  return crypto.createHash('sha256').update(JSON.stringify(result.rows[0])).digest('hex');
+  let archive=null;
+  if(process.env.BIMCHAT_ARCHIVE_FOLDERS==='1')archive=(await pool.query(`SELECT
+   COALESCE((SELECT jsonb_agg(x ORDER BY x.project_id) FROM (SELECT a.project_id,a.revision FROM bimchat_archive.projects a JOIN project_members pm ON pm.project_id=a.project_id WHERE pm.user_email=$1) x),'[]'::jsonb) AS folders,
+   COALESCE((SELECT jsonb_agg(x ORDER BY x.device_id,x.project_id) FROM (SELECT dp.device_id,dp.project_id,dp.revision FROM bimchat_archive.device_projects dp JOIN bimchat_archive.devices d ON d.id=dp.device_id WHERE d.user_email=$1 AND NOT d.revoked) x),'[]'::jsonb) AS preferences`,[email])).rows[0];
+  return crypto.createHash('sha256').update(JSON.stringify({catalog:result.rows[0],archive})).digest('hex');
  }
  async function wait(email,after,abort){
   if(typeof email!=='string'||!email||!(after==null||/^[a-f0-9]{64}$/.test(after)))throw Error('CATALOG_NOTIFICATION_REQUEST');
@@ -51,7 +55,7 @@ module.exports=function({pool,timeoutMs=20000}){
  }
  function mount(app,jwt){
   app.post('/drive/catalog/wait',jwt,async(req,res)=>{const abort=new AbortController();const close=()=>abort.abort();res.on('close',close);
-   try{if(!req.body||Object.keys(req.body).join(',')!=='cursor')throw Error('CATALOG_NOTIFICATION_REQUEST');res.set('Cache-Control','no-store');res.json(await wait(req.user.email,req.body.cursor,abort.signal));}
+   try{if(!req.body||Object.keys(req.body).join(',')!=='cursor')throw Error('CATALOG_NOTIFICATION_REQUEST');if(process.env.BIMCHAT_ARCHIVE_FOLDERS==='1'&&req.get('X-BIMChat-Device'))await require('./archive-folders/service.cjs').deviceAuth(pool,req);res.set('Cache-Control','no-store');res.json(await wait(req.user.email,req.body.cursor,abort.signal));}
    catch(e){if(!res.destroyed)res.status(503).json({code:'CATALOG_NOTIFICATION_UNAVAILABLE'});}finally{res.removeListener('close',close);}
   });
  }
