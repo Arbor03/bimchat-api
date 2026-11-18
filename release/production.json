@@ -1,18 +1,18 @@
 {
   "schema": 1,
-  "updatedAt": "2026-11-17T14:15:54.248Z",
-  "status": "lifecycle_client_release_prepared_not_deployed",
+  "updatedAt": "2026-11-18T14:09:59.189Z",
+  "status": "joint_drive_first_permit_release",
   "projectId": "f41cddab-d329-44f8-9b25-b3923f8980f9",
   "serviceId": "2b01fb7c-272b-40a2-ac8b-6aa9d7785028",
   "environment": "production",
   "recoveredDeployment": "02a95903-38fe-456f-ae0b-3f7f42bcfad4",
   "baselineDeployment": "56ae761e-1e84-4c9a-94f2-29f8e73af130",
   "api": "https://bimchat-api-production.up.railway.app",
-  "driveBuild": "2EE27FDA6387AEEABF77214A22651FF9E981321B0C2B4F46F22426F3A77381C4",
+  "driveBuild": "A534B32057308DC1CEBCC3F14B202E63A47449C42AE9F52BBDE95A88E1748BFB",
   "publicConfiguration": {
     "BIMCHAT_PRODUCT_OWNERSHIP": "1",
     "BIMCHAT_OWNERSHIP_REVIEW_PATH": "/app/ownership-review.json",
-    "BIMCHAT_OWNERSHIP_REVIEW_DIGEST": "00AA664E1200F19E1FE0FCA3A77825C8CB01B5AD3C42113AAC95B0417314BCB0",
+    "BIMCHAT_OWNERSHIP_REVIEW_DIGEST": "795C2F9EF093D924D754BC20E651D41B3E0B0C571071D21D866A23EF01B5EB89",
     "BIMCHAT_OWNERSHIP_WRITER_DIGEST": "FA420325DE72385A2BFBDE67BFAFE3BD2CA023CF82BA53661D605D8B464C44C1",
     "BIMCHAT_ARCHIVE_FOLDERS": "1",
     "BIMCHAT_ARCHIVE_WRITES": "0"
@@ -23,7 +23,10 @@
     "Database contents and stored project files are not restored from this Git repository.",
     "Unreleased product and design work is retained separately from the production branch."
   ],
-  "previousDeployment": "adcce1d3-89f5-4851-af77-1dff0f22f7ab",
+  "previousDeployment": "8a9848fc-9bfd-4cfe-a779-e2c3e0a3d02a",
   "addinBuild": "A19F17F7BC69D7AA8EB8429675F292106236926274B57B56EE09941060FB4AD6",
-  "requiredDriverSHA256": "E4351A2E77B3943916C7692A72DBA68DCB3DAA55DD3C01EB40513343140B7695"
+  "requiredDriverByComputer": {
+    "DESKTOP-PAKPR35": "2E1C12BFC75B90165BD192A49F763DF146FB4F7376941B28D348B9657428AFAB",
+    "DESKTOP-579U8JI": "E4351A2E77B3943916C7692A72DBA68DCB3DAA55DD3C01EB40513343140B7695"
+  }
 }

@@ -9,7 +9,10 @@ function enabled(h){need(h.native_gate_enabled===true,'STREAM_NATIVE_DISABLED');
 function owner(r,h,s){need(r&&r.file_id===h.file_id&&r.participant_id===s.participant_id&&r.epoch===h.epoch,'STREAM_NATIVE_OWNER');}
 function view(r,h){return {requestId:r.request_id,epoch:r.epoch,state:r.state,generation:r.generation==null?null:String(r.generation),baseSequence:r.base_sequence==null?null:Number(r.base_sequence),headSequence:Number(h.sequence)};}
 async function request(c,h,s,b){
- enabled(h);fields(b,['requestId']);need(uuid(b.requestId),'STREAM_NATIVE_REQUEST');
+ enabled(h);
+ const conditional=Object.prototype.hasOwnProperty.call(b,'expectedSequence');
+ fields(b,conditional?['requestId','expectedSequence']:['requestId']);
+ need(uuid(b.requestId)&&(!conditional||(Number.isSafeInteger(b.expectedSequence)&&b.expectedSequence>=0)),'STREAM_NATIVE_REQUEST');
  let r=(await c.query('SELECT * FROM bimchat_direct_ownership.native_admissions WHERE request_id=$1',[b.requestId])).rows[0];
  if(r)owner(r,h,s);
  else {
@@ -23,7 +26,10 @@ async function request(c,h,s,b){
   if(!active&&first?.request_id===r.request_id){
    // Admission and publication share the model row lock; no grant races across API workers.
    const g=(await c.query('UPDATE bimchat_direct_ownership.model_streams SET native_generation=native_generation+1 WHERE file_id=$1 RETURNING native_generation',[h.file_id])).rows[0];
-   r=(await c.query("UPDATE bimchat_direct_ownership.native_admissions SET state='reserved',generation=$2,base_sequence=$3 WHERE request_id=$1 RETURNING *",[r.request_id,g.native_generation,h.sequence])).rows[0];
+   const grant=conditional&&b.expectedSequence===Number(h.sequence)&&b.expectedSequence===Number(s.applied_sequence);
+   const state=grant?'admitted':'reserved';
+   r=(await c.query("UPDATE bimchat_direct_ownership.native_admissions SET state=$4,generation=$2,base_sequence=$3 WHERE request_id=$1 RETURNING *",[r.request_id,g.native_generation,h.sequence,state])).rows[0];
+   if(grant)return {...view(r,h),conditionalGrant:true};
   }
  }
  return view(r,h);

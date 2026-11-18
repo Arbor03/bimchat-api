@@ -47,7 +47,7 @@ module.exports=function({pool,review,approvedDigest,baseline,r2}){
  async function plan(email){const c=await pool.connect();try{await catalog(c,email);const row=(await c.query('SELECT * FROM bimchat_direct_ownership.model_streams WHERE file_id=$1',[config.fileId])).rows[0];const me=member(email);
   await requireNativeBaseline(c,row||null);
   if(!row)provision();
-  return {mode:'independent',deltaStreamVersion:1,nativeStreamSchema:splitLog?5:nativeModel===null?3:4,nativeAdmission:row?.native_gate_enabled===true,reviewDigest:approvedDigest,sessionLifetimeMs:config.sessionLifetimeMs,projectId:config.projectId,fileId:config.fileId,logicalCentralPath:config.logicalCentralPath,agentBuild:me.agentBuild,addinBuild:me.addinBuild,baselineReady:!!row,baselineState:row?'ready':provisioning,...(row?{epoch:row.epoch,headSequence:Number(row.sequence)}:{})};
+  return {mode:'independent',deltaStreamVersion:1,nativeStreamSchema:splitLog?5:nativeModel===null?3:4,nativeAdmission:row?.native_gate_enabled===true,conditionalNativeGrant:row?.native_gate_enabled===true,reviewDigest:approvedDigest,sessionLifetimeMs:config.sessionLifetimeMs,projectId:config.projectId,fileId:config.fileId,logicalCentralPath:config.logicalCentralPath,agentBuild:me.agentBuild,addinBuild:me.addinBuild,baselineReady:!!row,baselineState:row?'ready':provisioning,...(row?{epoch:row.epoch,headSequence:Number(row.sequence)}:{})};
  }finally{c.release();}}
  async function authenticate(req,joining,logLane=false){
   const receivedAt=Date.now(),email=req.user?.email,b=req.body;member(email);
