@@ -41,8 +41,9 @@ module.exports=function({rawPool,r2,selected,catalog,finalize}){
   }finally{if(heartbeat)clearInterval(heartbeat);}
  }
  async function confirm(input){
-  // Keep only the already-authenticated identity and immutable request values, no token.
-  const b=input.body||{};const req={user:{email:input.user?.email},body:{projectId:b.projectId,relativePath:b.relativePath,fileName:b.fileName,fileSize:b.fileSize,b2Key:b.b2Key,confirmProtocol:b.confirmProtocol}};
+  // Background finalization repeats archive authorization using the original device credentials.
+  const deviceHeaders=new Map(['X-BIMChat-Device','X-BIMChat-Device-Key'].map(name=>[name.toLowerCase(),input.get(name)]));
+  const b=input.body||{};const req={method:input.method,get:name=>deviceHeaders.get(name.toLowerCase()),user:{email:input.user?.email},body:{projectId:b.projectId,relativePath:b.relativePath,fileName:b.fileName,fileSize:b.fileSize,b2Key:b.b2Key,confirmProtocol:b.confirmProtocol}};
   need(req.body.confirmProtocol===2,'UPLOAD_CONFIRM_PROTOCOL_REQUIRED');
   const outcome=await guarded(req,async c=>{
    const s=await selected(c,req);need(s,'UPLOAD_RECEIPT_SCOPE_REQUIRED');
