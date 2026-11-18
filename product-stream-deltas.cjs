@@ -5,9 +5,11 @@
 const fs=require('node:fs'),fsp=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const proof=require('./ephemeral-attempt-v1/device-proof.cjs'),protocol=require('./scoped-api-v11/direct/protocol.cjs'),codec=require('./product-byte-delta.cjs');
 const {need}=require('./scoped-api-v11/scope.cjs');const block=262144;
-module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nativeBaseline=null,splitLog=null}){
+module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nativeBaseline=null,splitLog=null,checkpointCache=null}){
  const enrollment=require('./product-native-enrollment.cjs');
  if(nativeBaseline)enrollment.validate(nativeBaseline,nativeModel);
+ const checkpoints=require('./product-history-checkpoint.cjs');
+ const checkpointEnabled=!!checkpointCache && !!splitLog && nativeModel===null;
  const schema=nativeModel===null?3:4;
  const validatePatch=p=>nativeModel===null?protocol.validateStream(p):protocol.validateNativeStream(p,nativeModel);
  if(nativeModel!==null)protocol.nativeNames(nativeModel);
@@ -17,7 +19,7 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nati
  async function put(a,b){const c=await pool.connect();try{const r=await row(c,a,b.operationId),f=r.document.patch.Files.find(f=>f.Name===b.name);need(f&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(f.DeltaLength/block)&&typeof b.bytes==='string'&&b.bytes.length<=349528,'STREAM_DELTA_CHUNK');const bytes=Buffer.from(b.bytes,'base64');need(bytes.toString('base64')===b.bytes&&bytes.length===Math.min(block,f.DeltaLength-b.index*block),'STREAM_DELTA_CHUNK');await c.query('INSERT INTO bimchat_direct_ownership.stream_image_chunks(file_id,operation_id,file_name,chunk_index,bytes) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[a.fileId,b.operationId,b.name,b.index,bytes]);const old=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[a.fileId,b.operationId,b.name,b.index])).rows[0];need(old&&old.bytes.equals(bytes),'STREAM_DELTA_CHUNK_CHANGED');return {stored:true,index:b.index};}finally{c.release();}}
  async function chunks(c,file,id,f,target){const out=await fsp.open(target,'wx+');try{for(let index=0,indexed=0;indexed<f.DeltaLength;index++){const part=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[file,id,f.Name,index])).rows[0];need(part&&part.bytes.length===Math.min(block,f.DeltaLength-indexed),'STREAM_DELTA_INCOMPLETE');await out.writeFile(part.bytes);indexed+=part.bytes.length;}need(await codec.hash(out,f.DeltaLength)===f.DeltaHash,'STREAM_DELTA_HASH');}finally{await out.close();}}
  async function apply(c,file,id,f,before,dir,label){const delta=path.join(dir,label+'.delta'),after=path.join(dir,label+'.after');await chunks(c,file,id,f,delta);const handles=[];try{handles.push(await fsp.open(before,'r'));handles.push(await fsp.open(delta,'r'));handles.push(await fsp.open(after,'wx+'));await codec.apply({before:handles[0],delta:handles[1],output:handles[2],preLength:f.PreLength,postLength:f.PostLength,preHash:f.PreHash,postHash:f.PostHash,records:f.DeltaRecords});return after;}finally{for(const h of handles)await h.close();}}
- async function baseFile(c,file,name,sequence,dir){
+ async function initialFile(c,file,name,sequence,dir){
   if(nativeModel!==null)need(protocol.nativeNames(nativeModel).includes(name),'STREAM_NATIVE_FILE');
   const initial=(await c.query('SELECT manifest FROM bimchat_direct_ownership.model_stream_baselines WHERE file_id=$1 AND sequence=0',[file])).rows[0];need(initial,'STREAM_DELTA_BASELINE');
   const suffix=(nativeModel===null?'_backup/':nativeModel.slice(0,-4)+'_backup/')+name;
@@ -26,6 +28,11 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nati
   need(enrolledLog||matches.length===1,'STREAM_DELTA_BASELINE');const pin=enrolledLog?nativeBaseline.log:matches[0];
   const start=enrolledLog?nativeBaseline.sequence:0;need(sequence>=start,'STREAM_NATIVE_ENROLLMENT_SEQUENCE');
   let current=path.join(dir,name+'.base');const base=await fsp.open(current,'wx+');try{for(let index=0,at=0;at<pin.size;index++){const row=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_base_chunks WHERE file_id=$1 AND file_name=$2 AND chunk_index=$3',[file,name,index])).rows[0];need(row&&row.bytes.length===Math.min(block,pin.size-at),'STREAM_DELTA_BASELINE');await base.writeFile(row.bytes);at+=row.bytes.length;}need(await codec.hash(base,pin.size)===pin.sha256,'STREAM_DELTA_BASELINE');}finally{await base.close();}
+  return {filePath:current,sequence:start};
+ }
+ async function baseFile(c,file,name,sequence,dir,checkpoint=null){
+  const base=await checkpoints.materialize(checkpoint,name,dir) || await initialFile(c,file,name,sequence,dir);
+  let current=base.filePath;const start=base.sequence;
   // Cursor paging: do not load an unbounded history into RAM.
   for(let cursor=start;cursor<sequence;){const op=(await c.query('SELECT sequence,operation_id,payload FROM bimchat_direct_ownership.model_stream_operations WHERE file_id=$1 AND sequence>$2 AND sequence<=$3 ORDER BY sequence LIMIT 1',[file,cursor,sequence])).rows[0];
    const historical=nativeBaseline&&cursor<nativeBaseline.sequence;
@@ -38,12 +45,19 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nati
  }
  async function verified(a,id){const c=await pool.connect(),dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-delta-'));try{
   const r=await row(c,a,id),body=r.document,p=body.patch;validatePatch(p);
+  const saved=checkpointEnabled && p.PreviousSequence>=splitLog.sequence ? await checkpoints.lookup(c,checkpointCache,a.fileId,p.Generation,p.PreviousSequence) : null;
+  let staged=checkpointEnabled && p.PreviousSequence>=splitLog.sequence ? checkpoints.stage(a.fileId,p) : null;
   for(const f of p.Files){let before;
    if(f.Name==='users.dat'){before=path.join(dir,'users.before');await users.known(c,a.fileId,body.usersBefore);const out=await fsp.open(before,'wx');try{for(let index=0;index<Math.ceil(body.usersBefore.length/block);index++)await out.writeFile(await users.chunk(c,a.fileId,body.usersBefore,index));}finally{await out.close();}}
-   else before=await baseFile(c,a.fileId,f.Name,p.PreviousSequence,dir);
+   else before=await baseFile(c,a.fileId,f.Name,p.PreviousSequence,dir,saved);
    const after=await apply(c,a.fileId,id,f,before,dir,'new-'+f.Name);
+   if(staged && f.Name!=='users.dat'){
+    try{staged.files.set(f.Name,await fsp.readFile(after));}catch{staged=null;}
+   }
    if(f.Name==='users.dat'){need(body.usersAfter.length===f.PostLength&&body.usersAfter.sha256===f.PostHash,'STREAM_USERS_PATCH');await c.query('BEGIN');try{const input=fs.createReadStream(after);try{await users.importStream(c,a.fileId,body.usersAfter,input);}finally{input.destroy();}need(await users.prefix(c,a.fileId,body.usersBefore,body.usersAfter),'USERS_INDEX_CHANGED');await c.query('COMMIT');}catch(e){await c.query('ROLLBACK');throw e;}}
-  }return body;
+  }
+  if(staged)checkpointCache.staged=staged;
+  return body;
  }finally{c.release();await fsp.rm(dir,{recursive:true,force:true});}}
  async function get(a,b){const c=await pool.connect();try{const op=(await c.query('SELECT payload FROM bimchat_direct_ownership.model_stream_operations WHERE file_id=$1 AND operation_id=$2',[a.fileId,b.operationId])).rows[0];need(op?.payload?.patch?.Schema===schema,'STREAM_DELTA_NOT_COMMITTED');const f=op.payload.patch.Files.find(f=>f.Name===b.name);need(f&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(f.DeltaLength/block),'STREAM_DELTA_CHUNK');const part=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[a.fileId,b.operationId,b.name,b.index])).rows[0];need(part,'STREAM_DELTA_INCOMPLETE');return {operationId:b.operationId,name:b.name,index:b.index,bytes:part.bytes.toString('base64')};}finally{c.release();}}
 

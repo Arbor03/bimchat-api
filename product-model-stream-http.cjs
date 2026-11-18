@@ -6,6 +6,7 @@ module.exports=function({pool,review,approvedDigest,baseline,r2}){
  const config=JSON.parse(proof.canonical(review));
  need(config.nativeStreamSchema===undefined||[3,4,5].includes(config.nativeStreamSchema),'STREAM_NATIVE_SCHEMA');
  const splitLog=config.nativeStreamSchema===5;
+ const checkpointCache=splitLog && process.env.BIMCHAT_HISTORY_CHECKPOINT_FILE_ID===String(config.fileId)?{}:null;
  if(splitLog){need(config.splitLog&&Object.keys(config.splitLog).sort().join(',')==='logPin,ownershipSequence'&&Number.isSafeInteger(config.splitLog.ownershipSequence)&&config.splitLog.ownershipSequence>=0,'STREAM_SLOG_REVIEW');require('./product-slog-policy.cjs').pin(config.splitLog.logPin);}
  const nativeModel=config.nativeStreamSchema===4?config.centralPath.replace(/\\/g,'/').split('/').pop():null;
  if(nativeModel!==null)require('./scoped-api-v11/direct/protocol.cjs').nativeNames(nativeModel);
@@ -13,10 +14,11 @@ module.exports=function({pool,review,approvedDigest,baseline,r2}){
  need(!nativeBaseline||nativeModel!==null,'STREAM_NATIVE_ENROLLMENT');
  if(nativeBaseline)require('./product-native-enrollment.cjs').validate(nativeBaseline,nativeModel);
  const store=require('./product-model-stream.cjs')({pool,sessionLifetimeMs:config.sessionLifetimeMs,nativeModel,nativeBaseline,minimumSequence:splitLog?config.splitLog.ownershipSequence:0});
- const queue=require('./product-model-stream-queue.cjs')({pool,store,nativeModel});
+ const onAccepted=splitLog && checkpointCache ? (c,file,id,sequence)=>require('./product-history-checkpoint.cjs').promote(c,checkpointCache,file,id,sequence) : null;
+ const queue=require('./product-model-stream-queue.cjs')({pool,store,nativeModel,onAccepted});
  const chunks=require('./product-stream-chunks.cjs')({pool});
  const images=require('./product-stream-images.cjs')({pool});
- const deltas=require('./product-stream-deltas.cjs')({pool,r2,nativeModel,nativeBaseline,splitLog:splitLog?{sequence:config.splitLog.ownershipSequence,model:config.centralPath.replace(/\\/g,'/').split('/').pop()}:null});
+ const deltas=require('./product-stream-deltas.cjs')({pool,r2,checkpointCache,nativeModel,nativeBaseline,splitLog:splitLog?{sequence:config.splitLog.ownershipSequence,model:config.centralPath.replace(/\\/g,'/').split('/').pop()}:null});
  const deltaWire=require('./product-delta-stream.cjs');
  const deltaStream=deltaWire({deltas,queue,pool,schema:nativeModel===null?3:4,validateModel:operation=>{need(operation?.patch?.Schema===(nativeModel===null?3:4)&&operation.patch.Model===config.centralPath.replace(/\\/g,'/').split('/').pop(),'STREAM_MODEL_BINDING');if(nativeModel===null)require('./scoped-api-v11/direct/protocol.cjs').validateStream(operation.patch);else require('./scoped-api-v11/direct/protocol.cjs').validateNativeStream(operation.patch,nativeModel);},wake});
  const users=require('./product-stream-users.cjs')({pool});

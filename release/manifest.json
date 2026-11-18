@@ -1,12 +1,12 @@
 {
-  "utc": "2026-11-18T14:09:59.189Z",
-  "status": "joint_drive_first_permit_release",
-  "oldBuild": "2EE27FDA6387AEEABF77214A22651FF9E981321B0C2B4F46F22426F3A77381C4",
+  "utc": "2026-11-18T15:29:48.999Z",
+  "status": "model_scoped_history_checkpoint_pilot",
+  "oldBuild": "A534B32057308DC1CEBCC3F14B202E63A47449C42AE9F52BBDE95A88E1748BFB",
   "newBuild": "A534B32057308DC1CEBCC3F14B202E63A47449C42AE9F52BBDE95A88E1748BFB",
   "oldAddin": "A19F17F7BC69D7AA8EB8429675F292106236926274B57B56EE09941060FB4AD6",
   "newAddin": "A19F17F7BC69D7AA8EB8429675F292106236926274B57B56EE09941060FB4AD6",
-  "oldDigest": "00AA664E1200F19E1FE0FCA3A77825C8CB01B5AD3C42113AAC95B0417314BCB0",
-  "newDigest": "795C2F9EF093D924D754BC20E651D41B3E0B0C571071D21D866A23EF01B5EB89",
+  "oldDigest": "795C2F9EF093D924D754BC20E651D41B3E0B0C571071D21D866A23EF01B5EB89",
+  "newDigest": "D2FFABE20C7F7C90F0760BA040F3C629C02C413330B5BD250CC7C745B3247B69",
   "driverChanged": false,
   "limits": [
     "Uncertain non-SLOG mutations spanning session expiry still stop for reconciliation; no arbitrary-outage guarantee"
@@ -99,13 +99,13 @@
     },
     {
       "path": "ownership-review.json",
-      "sha256": "BB3EE63FA5CC757C3C1C256B8399153700E0329EC3D6095D5C74A5EB7B55A3CB",
+      "sha256": "A4648D7BF2809C0CAD0D849269331D409B324A02427A4038C2765890409F1CF8",
       "bytes": 1039
     },
     {
       "path": "ownership-writer-inventory.json",
-      "sha256": "5CC9DF3363B62C9873D4759C72ABA3A754BEA9DF7C33D7CBBED7E7A3D8C9E0E3",
-      "bytes": 10685
+      "sha256": "41DEF7CF2E55676EB78A172D0EDA4105604267260922A0715B799DC6B303E3AA",
+      "bytes": 10822
     },
     {
       "path": "package-lock.json",
@@ -134,8 +134,8 @@
     },
     {
       "path": "product-byte-delta.cjs",
-      "sha256": "2CA5C7B16823AFF84B1195F8C6253BFFCB44F651147984E2A88DBAC13BAF248E",
-      "bytes": 3284
+      "sha256": "8F45693BB416E8532399667233B61EAE3782903F119F110ADEEA0C7B86F3F2CB",
+      "bytes": 3302
     },
     {
       "path": "product-catalog-notifications.cjs",
@@ -148,14 +148,19 @@
       "bytes": 3875
     },
     {
+      "path": "product-history-checkpoint.cjs",
+      "sha256": "4743E91ABE1BC64054042959912E835981420022E98361F3CC523EDBB12EFB78",
+      "bytes": 2459
+    },
+    {
       "path": "product-initial-baseline.cjs",
       "sha256": "617D02AE6B22F09730E0077DCB0EE2732162E409A2A2E77F0F7F2DD4A65EB690",
       "bytes": 8628
     },
     {
       "path": "product-model-stream-http.cjs",
-      "sha256": "97E1682F81E8000EF221308E966718CAE284D5765BE7AB44F3DFCC79C327E3BF",
-      "bytes": 17447
+      "sha256": "A76B46961D46C4FC9983D9A40AE67B0B0709BC578D5C026951D0B150018C3C40",
+      "bytes": 17755
     },
     {
       "path": "product-model-stream-policy.cjs",
@@ -164,8 +169,8 @@
     },
     {
       "path": "product-model-stream-queue.cjs",
-      "sha256": "700C71DCC0A0A9126C828F664582491DF76FD2429A04C6588636289C1FB243DE",
-      "bytes": 5018
+      "sha256": "0DE5A9A4850D1C97EABFECBC4EF51E3D19E38F9B8446F9B6E2E0E325DC0AFDA4",
+      "bytes": 5207
     },
     {
       "path": "product-model-stream.cjs",
@@ -289,8 +294,8 @@
     },
     {
       "path": "product-stream-deltas.cjs",
-      "sha256": "C0BEA77F8A303CE756F1D2416C0A077CE107D1ACBA650F99CA514643720C3524",
-      "bytes": 10919
+      "sha256": "D26D3D3261DD074572E575E40B75BCB9241FFA30FCCC2D8C7542ED60A4E2C48E",
+      "bytes": 11825
     },
     {
       "path": "product-stream-images.cjs",
@@ -555,7 +560,7 @@
   ],
   "databaseMigration": null,
   "serverBehaviorChanged": true,
-  "clientBehaviorChanged": true,
+  "clientBehaviorChanged": false,
   "requiredDriverByComputer": {
     "DESKTOP-PAKPR35": "2E1C12BFC75B90165BD192A49F763DF146FB4F7376941B28D348B9657428AFAB",
     "DESKTOP-579U8JI": "E4351A2E77B3943916C7692A72DBA68DCB3DAA55DD3C01EB40513343140B7695"

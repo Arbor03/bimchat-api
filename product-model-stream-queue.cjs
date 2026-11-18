@@ -3,7 +3,7 @@ const proof=require('./ephemeral-attempt-v1/device-proof.cjs'),{need}=require('.
 const protocol=require('./scoped-api-v11/direct/protocol.cjs');
 // Intake and drain have separate per-model PostgreSQL locks. Slow processing
 // cannot reorder committed arrivals or keep later requests only in RAM.
-module.exports=function({pool,store,nativeModel=null}){
+module.exports=function({pool,store,nativeModel=null,onAccepted=null}){
  async function enqueue(auth,body,assembled=false,reserving=false){
   need(assembled||Buffer.byteLength(proof.canonical(body))<=1048576,'STREAM_TRANSPORT_BOUND');
   if(nativeModel===null)protocol.validateStream(body?.patch);else protocol.validateNativeStream(body?.patch,nativeModel);
@@ -30,6 +30,9 @@ module.exports=function({pool,store,nativeModel=null}){
    else try{result=await store.submit(row.source_auth,row.payload);}catch(e){
     if(!e||typeof e.message!=='string'||!/^(STREAM|USERS)_[A-Z_]+$/.test(e.message))throw e;
     result={accepted:false,reason:e.message};
+   }
+   if(result.accepted && onAccepted){
+    try{await onAccepted(c,fileId,row.operation_id,result.sequence);}catch{console.warn('ownership checkpoint refresh skipped');}
    }
    await c.query("UPDATE bimchat_direct_ownership.model_stream_inbox SET state=$2,result=$3 WHERE arrival=$1 AND state='queued'",[row.arrival,result.accepted?'accepted':'rejected',JSON.stringify(result)]);
    await require('./product-stream-notifications.cjs').publish(c,fileId);

@@ -6,7 +6,8 @@ const read=name=>JSON.parse(fs.readFileSync(path.join(root,name),'utf8').replace
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex').toUpperCase();
 const canonical=value=>Array.isArray(value)?'['+value.map(canonical).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}':JSON.stringify(value);
 const manifest=read('release/manifest.json'),release=read('release/production.json'),review=read('ownership-review.json');
-assert.equal(manifest.files.length,108,'Unexpected reviewed runtime inventory');
+assert.equal(manifest.files.length,109,'Unexpected reviewed runtime inventory');
+assert.equal(new Set(manifest.files.map(file=>file.path)).size,109,'Duplicate runtime inventory entry');
 for(const file of manifest.files){
  assert(!path.isAbsolute(file.path)&&!file.path.split(/[\\/]/).includes('..'),'Invalid manifest path');
  assert.equal(hash(fs.readFileSync(path.join(root,file.path))),file.sha256,'Unreviewed runtime change: '+file.path);
@@ -14,6 +15,11 @@ for(const file of manifest.files){
 assert.equal(hash(canonical(review)),manifest.newDigest,'Review digest mismatch');
 assert.equal(release.publicConfiguration.BIMCHAT_OWNERSHIP_REVIEW_DIGEST,manifest.newDigest);
 assert.equal(release.publicConfiguration.BIMCHAT_OWNERSHIP_WRITER_DIGEST,review.writerInventoryDigest);
+const writers=read('ownership-writer-inventory.json');
+assert.equal(hash(canonical(writers)),review.writerInventoryDigest,'Writer inventory digest mismatch');
+const runtimePins=new Map(manifest.files.map(file=>[file.path,file.sha256]));
+for(const file of writers)assert.equal(file.sha256,runtimePins.get(file.path),'Writer source mismatch: '+file.path);
+assert.equal(release.publicConfiguration.BIMCHAT_HISTORY_CHECKPOINT_FILE_ID,String(review.fileId),'Checkpoint pilot scope');
 assert.equal(release.driveBuild,manifest.newBuild);
 assert(review.participants.every(p=>p.agentBuild===release.driveBuild),'Client build mismatch');
 assert.equal(release.addinBuild,manifest.newAddin);
@@ -21,4 +27,4 @@ assert(review.participants.every(p=>p.addinBuild===release.addinBuild),'Add-in b
 if(process.argv.includes('--environment')){
  for(const [key,value] of Object.entries(release.publicConfiguration))assert.equal(process.env[key],value,'Deployment configuration mismatch: '+key);
 }
-console.log('Verified 108 runtime files, review digest, writer pin and client build.');
+console.log('Verified 109 runtime files, writer sources, pilot model, review digest and client build.');

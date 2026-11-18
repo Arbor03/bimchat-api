@@ -77,7 +77,11 @@
   },
   {
     "path": "product-byte-delta.cjs",
-    "sha256": "2CA5C7B16823AFF84B1195F8C6253BFFCB44F651147984E2A88DBAC13BAF248E"
+    "sha256": "8F45693BB416E8532399667233B61EAE3782903F119F110ADEEA0C7B86F3F2CB"
+  },
+  {
+    "path": "product-history-checkpoint.cjs",
+    "sha256": "4743E91ABE1BC64054042959912E835981420022E98361F3CC523EDBB12EFB78"
   },
   {
     "path": "product-initial-baseline.cjs",
@@ -85,7 +89,7 @@
   },
   {
     "path": "product-model-stream-http.cjs",
-    "sha256": "8D8B0AFDD72CBC6E1D07CC7DB72303841A3947BD6F66ADEB66B97ABA9D8ABAF6"
+    "sha256": "A76B46961D46C4FC9983D9A40AE67B0B0709BC578D5C026951D0B150018C3C40"
   },
   {
     "path": "product-model-stream-policy.cjs",
@@ -93,7 +97,7 @@
   },
   {
     "path": "product-model-stream-queue.cjs",
-    "sha256": "700C71DCC0A0A9126C828F664582491DF76FD2429A04C6588636289C1FB243DE"
+    "sha256": "0DE5A9A4850D1C97EABFECBC4EF51E3D19E38F9B8446F9B6E2E0E325DC0AFDA4"
   },
   {
     "path": "product-model-stream.cjs",
@@ -153,7 +157,7 @@
   },
   {
     "path": "product-stream-deltas.cjs",
-    "sha256": "C0BEA77F8A303CE756F1D2416C0A077CE107D1ACBA650F99CA514643720C3524"
+    "sha256": "D26D3D3261DD074572E575E40B75BCB9241FFA30FCCC2D8C7542ED60A4E2C48E"
   },
   {
     "path": "product-stream-images.cjs",
@@ -169,7 +173,7 @@
   },
   {
     "path": "product-upload-seal-jobs.cjs",
-    "sha256": "457DC4F4A16E56D0C8E614CC4E813A7939A755626BB05AE96C9144E1352843D0"
+    "sha256": "6B18C18E970706AACCD018211F415F17F6032BF5797E46595131432BD5BE4A59"
   },
   {
     "path": "product-user-table.cjs",

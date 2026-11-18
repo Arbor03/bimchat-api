@@ -12,9 +12,9 @@ async function hash(file,length){const sha=crypto.createHash('sha256');for(let a
 async function apply({before,delta,output,preLength,postLength,preHash,postHash,records}){
  need([preLength,postLength,records].every(n=>Number.isSafeInteger(n)&&n>=0),'STREAM_DELTA_METADATA');
  need(/^[0-9A-F]{64}$/.test(preHash)&&/^[0-9A-F]{64}$/.test(postHash),'STREAM_DELTA_METADATA');
- const a=await before.stat(),b=await delta.stat(),c=await output.stat();
- need(c.size===0&&!(a.dev===c.dev&&a.ino===c.ino)&&!(b.dev===c.dev&&b.ino===c.ino),'STREAM_DELTA_PRIVATE_OUTPUT');
- need(a.size===preLength&&await hash(before,preLength)===preHash,'STREAM_DELTA_PREIMAGE');
+ const a=await before.stat({bigint:true}),b=await delta.stat({bigint:true}),c=await output.stat({bigint:true});
+ need(c.size===0n&&!(a.dev===c.dev&&a.ino===c.ino)&&!(b.dev===c.dev&&b.ino===c.ino),'STREAM_DELTA_PRIVATE_OUTPUT');
+ need(a.size===BigInt(preLength)&&await hash(before,preLength)===preHash,'STREAM_DELTA_PREIMAGE');
  for(let at=0;at<Math.min(preLength,postLength);at+=block)await write(output,await exact(before,Math.min(block,Math.min(preLength,postLength)-at),at),at);
  let wire=0,end=0,appendEnd=preLength,changed=0;
  for(let index=0;index<records;index++){
@@ -30,7 +30,7 @@ async function apply({before,delta,output,preLength,postLength,preHash,postHash,
   for(let i=0;i<oldLength;i++)need(old[i]!==next[i],'STREAM_DELTA_UNCHANGED_BYTE');
   await write(output,next,offset);end=offset+newLength;changed+=newLength;
  }
- need(wire===b.size&&appendEnd===Math.max(preLength,postLength),'STREAM_DELTA_LENGTH');
+ need(BigInt(wire)===b.size&&appendEnd===Math.max(preLength,postLength),'STREAM_DELTA_LENGTH');
  await output.truncate(postLength);await output.sync();
  need(await hash(output,postLength)===postHash,'STREAM_DELTA_POSTIMAGE');
  return {records,changedBytes:changed,wireBytes:wire,length:postLength,sha256:postHash};
