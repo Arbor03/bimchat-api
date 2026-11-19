@@ -81,7 +81,7 @@
   },
   {
     "path": "product-history-checkpoint.cjs",
-    "sha256": "4743E91ABE1BC64054042959912E835981420022E98361F3CC523EDBB12EFB78"
+    "sha256": "ED290092F47F0026A5090911A28F818E795D6F719AA4CA7C5E34A794CE5DA15A"
   },
   {
     "path": "product-initial-baseline.cjs",
@@ -89,7 +89,7 @@
   },
   {
     "path": "product-model-stream-http.cjs",
-    "sha256": "A76B46961D46C4FC9983D9A40AE67B0B0709BC578D5C026951D0B150018C3C40"
+    "sha256": "43353E96882988C02DE31E3718A8FB8A4240A15DBD91BDFA2DAADD73B2470DD3"
   },
   {
     "path": "product-model-stream-policy.cjs",
@@ -157,7 +157,7 @@
   },
   {
     "path": "product-stream-deltas.cjs",
-    "sha256": "8F87680F928DFD04E76CD96A5551641C5747CDA9E64F268DC069D1AE421C8164"
+    "sha256": "42B5B0E02D001307A7B0035545EFD165BCC41B9BB6F6FF57EB59D4E46C884340"
   },
   {
     "path": "product-stream-images.cjs",

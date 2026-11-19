@@ -1,12 +1,12 @@
 {
-  "utc": "2026-11-19T10:12:28.276Z",
-  "status": "model695_history_diagnostics",
+  "utc": "2026-11-19T10:34:53.760Z",
+  "status": "model695_drive_connect_history_warmup",
   "oldBuild": "A534B32057308DC1CEBCC3F14B202E63A47449C42AE9F52BBDE95A88E1748BFB",
   "newBuild": "AC3CF0FD019989274DF8E8EB2B535B4C5E128450097CE8424E14F7A4F8F44F25",
   "oldAddin": "A19F17F7BC69D7AA8EB8429675F292106236926274B57B56EE09941060FB4AD6",
   "newAddin": "A19F17F7BC69D7AA8EB8429675F292106236926274B57B56EE09941060FB4AD6",
-  "oldDigest": "A9386CD3F2109302F6508D0A2743C18E13C1ED7DCA2024DDAFC579C4F30D1771",
-  "newDigest": "1FD3417AEEEC12D94A3EA64791777BD042AF3ECC8AD65801B41962DB737A4EB1",
+  "oldDigest": "1FD3417AEEEC12D94A3EA64791777BD042AF3ECC8AD65801B41962DB737A4EB1",
+  "newDigest": "203CFE705719AD78147EC934D438AF99E2D96DEBFBF96196249591DC17E15E02",
   "driverChanged": false,
   "limits": [
     "Uncertain non-SLOG mutations spanning session expiry still stop for reconciliation; no arbitrary-outage guarantee"
@@ -99,12 +99,12 @@
     },
     {
       "path": "ownership-review.json",
-      "sha256": "3CAB38F739F006C597C8FA05DE3501A27B18FCA6E7B05516F6E05FF1931354ED",
+      "sha256": "850C9AA6AF4D760100D1021D0EB6A013E20EB5D02C3C3F9ED17E5CC22B7A4771",
       "bytes": 1039
     },
     {
       "path": "ownership-writer-inventory.json",
-      "sha256": "D8927D6F77C04F3133A03EE2A5B531BA4AFC86DDDF2E420967507FB90306D001",
+      "sha256": "6A6C1A7AEA90AB2419971AF75CA7A293701868B466EC4B798992CC643B2EFEFC",
       "bytes": 10822
     },
     {
@@ -149,8 +149,8 @@
     },
     {
       "path": "product-history-checkpoint.cjs",
-      "sha256": "4743E91ABE1BC64054042959912E835981420022E98361F3CC523EDBB12EFB78",
-      "bytes": 2459
+      "sha256": "ED290092F47F0026A5090911A28F818E795D6F719AA4CA7C5E34A794CE5DA15A",
+      "bytes": 3566
     },
     {
       "path": "product-initial-baseline.cjs",
@@ -159,8 +159,8 @@
     },
     {
       "path": "product-model-stream-http.cjs",
-      "sha256": "A76B46961D46C4FC9983D9A40AE67B0B0709BC578D5C026951D0B150018C3C40",
-      "bytes": 17755
+      "sha256": "43353E96882988C02DE31E3718A8FB8A4240A15DBD91BDFA2DAADD73B2470DD3",
+      "bytes": 17847
     },
     {
       "path": "product-model-stream-policy.cjs",
@@ -294,8 +294,8 @@
     },
     {
       "path": "product-stream-deltas.cjs",
-      "sha256": "8F87680F928DFD04E76CD96A5551641C5747CDA9E64F268DC069D1AE421C8164",
-      "bytes": 12448
+      "sha256": "42B5B0E02D001307A7B0035545EFD165BCC41B9BB6F6FF57EB59D4E46C884340",
+      "bytes": 13511
     },
     {
       "path": "product-stream-images.cjs",

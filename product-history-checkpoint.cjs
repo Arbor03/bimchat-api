@@ -14,6 +14,29 @@ async function accepted(c,file,epoch,sequence) {
  return rows[0];
 }
 
+async function warm(c,cache,file,epoch,sequence,restore) {
+ const previous=cache.current;
+ if(previous?.file===file && previous.epoch===epoch && previous.sequence>=sequence)return 'superseded';
+ const row=await accepted(c,file,epoch,sequence);
+ if(!row)return 'unavailable';
+ const pins=names.map(name=>row.result_pins.files.find(pin=>pin.name===name));
+ need(pins.every(pin=>pin && Number.isSafeInteger(pin.length) && pin.length>=0 && /^[0-9A-F]{64}$/.test(pin.sha256)),'CHECKPOINT_PINS');
+ if(pins.reduce((sum,pin)=>sum+pin.length,0)>maxBytes)return 'oversize';
+ const prior=await lookup(c,cache,file,epoch,sequence);
+ const files=new Map();
+ for(const pin of pins){
+  if(cache.current!==previous)return 'superseded';
+  const filePath=await restore(pin.name,prior);
+  need((await fs.stat(filePath)).size===pin.length,'CHECKPOINT_LENGTH');
+  const bytes=await fs.readFile(filePath);
+  need(hash(bytes)===pin.sha256,'CHECKPOINT_HASH');
+  files.set(pin.name,bytes);
+ }
+ if(cache.current!==previous)return 'superseded';
+ cache.current={file,epoch,sequence,id:row.operation_id,files};
+ return 'ready';
+}
+
 async function lookup(c,cache,file,epoch,sequence) {
  const saved = cache.current;
  if(!saved || saved.file!==file || saved.epoch!==epoch || saved.sequence>sequence)return null;
@@ -53,4 +76,4 @@ async function promote(c,cache,file,id,sequence) {
   cache.staged=null;
  }
 }
-module.exports={lookup,materialize,stage,promote};
+module.exports={lookup,materialize,stage,promote,warm};

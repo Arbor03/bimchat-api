@@ -85,5 +85,28 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nati
   else{dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-resume-'));const file=await baseFile(c,a.fileId,b.name,sequence,dir),h=await fsp.open(file,'r');try{need((await h.stat()).size===pin.length&&await codec.hash(h,pin.length)===pin.sha256,'STREAM_RESUME_PIN');bytes=Buffer.alloc(Math.min(block,pin.length-b.index*block));let at=0;while(at<bytes.length){const r=await h.read(bytes,at,bytes.length-at,b.index*block+at);need(r.bytesRead>0,'STREAM_RESUME_SHORT');at+=r.bytesRead;}}finally{await h.close();}}
   await c.query('ROLLBACK');return {epoch:p.epoch,sequence,name:b.name,index:b.index,bytes:bytes.toString('base64')};
  }finally{try{await c.query('ROLLBACK');}finally{c.release();if(dir)await fsp.rm(dir,{recursive:true,force:true});}}}
- return {begin,put,verified,get,resume};
+ let warming=null;
+ function warmHistory(file,epoch,sequence){
+  if(!checkpointEnabled || file!==695 || !Number.isSafeInteger(sequence) || sequence<splitLog.sequence || sequence<=0)return;
+  const current=checkpointCache.current;
+  if(current?.file===file && current.epoch===epoch && current.sequence>=sequence)return;
+  if(warming)return warming;
+  const started=process.hrtime.bigint();
+  async function prepare(){
+   const dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-warm-'));
+   try{
+    const c=await pool.connect();
+    try{return await checkpoints.warm(c,checkpointCache,file,epoch,sequence,
+     (name,prior)=>baseFile(c,file,name,sequence,dir,prior));}
+    finally{c.release();}
+   }finally{await fsp.rm(dir,{recursive:true,force:true});}
+  }
+  warming=prepare().catch(()=>'failed').then(outcome=>{
+   console.info(JSON.stringify({event:'ownership_history_warmup',fileId:file,sequence,outcome,
+    elapsedMs:Number(process.hrtime.bigint()-started)/1e6}));
+   return outcome;
+  }).finally(()=>{warming=null;});
+  return warming;
+ }
+ return {begin,put,verified,get,resume,warmHistory};
 };
