@@ -24,14 +24,23 @@ module.exports=function({rawPool,uploads}){
  }
  async function load(c,req){await context(c,req);const b=(await c.query('SELECT * FROM bimchat_direct_ownership.sync_batches WHERE id=$1 FOR UPDATE',[req.body.batchId])).rows[0];need(b&&b.project_id===req.body.projectId&&b.email===req.user.email,'BATCH_BINDING');return b;}
  const fileReq=(req,f)=>({user:req.user,body:{projectId:req.body.projectId,relativePath:f.path,fileName:f.path.replace(/\\/g,'/').split('/').pop(),fileSize:f.size}});
+ async function describe(c,b,state,clientVersion){
+  const result={success:true,state};
+  if(state!=='collecting'||clientVersion!==1)return result;
+  const row=(await c.query(
+   "SELECT p.sha256 FROM bimchat_direct_ownership.sync_batch_items i JOIN bimchat_direct_ownership.sealed_objects p ON p.object_key=(i.prior_pin->>'key') WHERE i.batch_id=$1 AND i.path_key=$2",
+   [b.batchId,scope.key(b.centralPath)])).rows[0];
+  if(row)result.rvtBaseSha256=row.sha256;
+  return result;
+ }
  async function begin(req){const files=manifest(req.body);return co.transaction(rawPool,async c=>{
   await context(c,req);
   const old=(await c.query('SELECT * FROM bimchat_direct_ownership.sync_batches WHERE id=$1 FOR UPDATE',[req.body.batchId])).rows[0];
-  if(old){need(old.email===req.user.email&&old.project_id===req.body.projectId&&old.central_path===req.body.centralPath&&JSON.stringify(manifest({...req.body,files:old.manifest}))===JSON.stringify(files),'BATCH_ID_REUSE');return {success:true,state:old.state};}
+  if(old){need(old.email===req.user.email&&old.project_id===req.body.projectId&&old.central_path===req.body.centralPath&&JSON.stringify(manifest({...req.body,files:old.manifest}))===JSON.stringify(files),'BATCH_ID_REUSE');return describe(c,req.body,old.state,req.body.rvtDeltaVersion);}
   for(const f of files){await scope.ordinary(c,req.body.projectId,f.path);const s=await uploads.selected(c,fileReq(req,f));need(s&&scope.equal(s.central_path,req.body.centralPath),'BATCH_ENROLLED_MODEL_REQUIRED');}
   await c.query("INSERT INTO bimchat_direct_ownership.sync_batches(id,project_id,central_path,email,manifest,state) VALUES($1,$2,$3,$4,$5::jsonb,'collecting')",[req.body.batchId,req.body.projectId,req.body.centralPath,req.user.email,JSON.stringify(files)]);
   for(const f of files){const prior=await uploads.catalog(c,req.body.projectId,f.path);await c.query('INSERT INTO bimchat_direct_ownership.sync_batch_items(batch_id,path_key,prior_pin) VALUES($1,$2,$3::jsonb)',[req.body.batchId,scope.key(f.path),JSON.stringify(prior?{id:prior.id,version:prior.current_version,key:prior.b2_key}:null)]);}
-  return {success:true,state:'collecting'};
+  return describe(c,req.body,'collecting',req.body.rvtDeltaVersion);
  });}
  async function issue(req){return co.transaction(rawPool,async c=>{
   const b=await load(c,req);need(b.state==='collecting','BATCH_ALREADY_COMMITTED');const f=b.manifest.find(x=>scope.equal(x.path,req.body.path));need(f,'BATCH_FILE_UNKNOWN');
@@ -43,9 +52,14 @@ module.exports=function({rawPool,uploads}){
   if(item.receipt_id&&req.body.replaceAttempt!==true){const r=(await c.query('SELECT * FROM bimchat_direct_ownership.normal_upload_receipts WHERE id=$1',[item.receipt_id])).rows[0];return {success:true,b2Key:r.upload_key,reconcile:true};}
   // Replacement uses a NEW object key and receipt. Any late old seal fails the
   // receipt-id CAS in stage(); it cannot publish or replace this attempt.
-  const input=fileReq(req,f);await scope.ordinary(c,b.project_id,f.path);const result=await uploads.issue(c,input);need(result,'BATCH_UPLOAD_REQUIRED');
+  const input=fileReq(req,f);await scope.ordinary(c,b.project_id,f.path);let delta=false;
+  if(scope.equal(f.path,b.central_path)&&prior&&/^[A-F0-9]{64}$/.test(req.body.rvtBaseSha256||'')&&Number.isSafeInteger(req.body.deltaBytes)&&req.body.deltaBytes>0&&req.body.deltaBytes<f.size){
+   const pin=(await c.query('SELECT sha256 FROM bimchat_direct_ownership.sealed_objects WHERE object_key=$1',[prior.b2_key])).rows[0];
+   delta=!!pin&&pin.sha256===req.body.rvtBaseSha256;
+  }
+  const result=await uploads.issue(c,input,delta);need(result,'BATCH_UPLOAD_REQUIRED');
   const r=(await c.query('UPDATE bimchat_direct_ownership.normal_upload_receipts SET sync_batch_id=$2 WHERE upload_key=$1 RETURNING id',[result.b2Key,b.id])).rows[0];need(r,'BATCH_RECEIPT_REQUIRED');
-  await c.query('UPDATE bimchat_direct_ownership.sync_batch_items SET receipt_id=$3 WHERE batch_id=$1 AND path_key=$2',[b.id,scope.key(f.path),r.id]);return result;
+  await c.query('UPDATE bimchat_direct_ownership.sync_batch_items SET receipt_id=$3 WHERE batch_id=$1 AND path_key=$2',[b.id,scope.key(f.path),r.id]);return {...result,rvtDelta:delta};
  });}
  async function commit(req){return co.transaction(rawPool,async c=>{
   const b=await load(c,req);if(b.state==='committed')return b.result;

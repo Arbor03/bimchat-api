@@ -20,7 +20,17 @@ module.exports=function({rawPool,r2,selected,catalog,finalize}){
    if(r.sync_batch_id){heartbeat=setInterval(()=>{if(renewing)return;renewing=true;renew().catch(e=>{lost=e;}).finally(()=>{renewing=false;});},10000);heartbeat.unref?.();}
    // No project transaction or SQL connection is retained across either network await.
    const progress=phase=>co.transaction(rawPool,async c=>{need(['source-head','source-read','sealed-put','sealed-verify'].includes(phase),'UPLOAD_SEAL_PHASE');need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET network_phase=$3,updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state IN ('claimed','sealing') RETURNING receipt_id",[r.id,owner,phase])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');});
-   const pin=await r2.seal({object_key:r.upload_key,project_id:r.project_id,relative_path:r.relative_path,progress},p=>reserve(r,owner,p));
+   const cap={object_key:r.upload_key,project_id:r.project_id,relative_path:r.relative_path,progress};
+   if(r.upload_key.endsWith('.rvtd1')){
+    need(r.sync_batch_id&&r.prior_key,'UPLOAD_DELTA_BASE');
+    const batch=(await rawPool.query('SELECT central_path,manifest FROM bimchat_direct_ownership.sync_batches WHERE id=$1',[r.sync_batch_id])).rows[0];
+    need(batch&&scope.equal(batch.central_path,r.relative_path),'UPLOAD_DELTA_CENTRAL');
+    const target=batch.manifest.find(f=>scope.equal(f.path,r.relative_path));
+    need(target&&target.size===Number(r.expected_size),'UPLOAD_DELTA_TARGET');
+    cap.expected={size:target.size,sha256:target.sha256};
+    cap.deltaBase=await require('./scoped-api-v11/content-pins.cjs').load(rawPool,r.prior_key);
+   }
+   const pin=await r2.seal(cap,p=>reserve(r,owner,p));
    if(lost)throw lost;await renew();
    need(pin.contentVerified===true&&pin.size===Number(r.expected_size),'UPLOAD_RECEIPT_CONTENT');
    await co.transaction(rawPool,async c=>{need((await c.query("UPDATE bimchat_direct_ownership.normal_upload_seal_jobs SET state='verified',verified_pin=$3::jsonb,updated_at=clock_timestamp() WHERE receipt_id=$1 AND owner_id=$2 AND state='sealing' AND destination_key=$4 AND expected_sha256=$5 AND expected_size=$6 RETURNING receipt_id",[r.id,owner,JSON.stringify(pin),pin.key,pin.sha256,pin.size])).rowCount===1,'UPLOAD_SEAL_OWNER_CHANGED');});

@@ -26,7 +26,7 @@ module.exports=function({rawPool,r2,signUpload}){
   need(Number.isSafeInteger(req.body.fileSize)&&req.body.fileSize>=0,'UPLOAD_RECEIPT_SIZE');return s;
  }
  async function catalog(c,project,path){const rows=(await c.query('SELECT id,current_version,b2_key FROM cloud_files WHERE project_id=$1 AND lower(replace(relative_path,chr(92),chr(47)))=$2 FOR UPDATE',[project,scope.key(path)])).rows;need(rows.length<=1,'UPLOAD_RECEIPT_CATALOG_AMBIGUOUS');return rows[0]||null;}
- async function issue(c,req){const s=await selected(c,req);if(!s)return null;const b=req.body,prior=await catalog(c,s.project_id,b.relativePath),id=crypto.randomUUID(),key='direct-upload/'+s.project_id+'/'+id;
+ async function issue(c,req,delta=false){const s=await selected(c,req);if(!s)return null;const b=req.body,prior=await catalog(c,s.project_id,b.relativePath),id=crypto.randomUUID(),key='direct-upload/'+s.project_id+'/'+id+(delta?'.rvtd1':'');
   await c.query("INSERT INTO bimchat_direct_ownership.normal_upload_receipts(id,scope_id,project_id,relative_path,email,upload_key,expected_size,prior_file_id,prior_version,prior_key,expires_at,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp()+interval '1 hour','issued')",[id,s.id,s.project_id,b.relativePath,req.user.email,key,b.fileSize,prior&&prior.id,prior&&prior.current_version,prior&&prior.b2_key]);
   await c.query("INSERT INTO bimchat_direct_ownership.normal_upload_seal_jobs(receipt_id,owner_id,state) VALUES($1,$2,'ready')",[id,crypto.randomUUID()]);
   // Response is buffered by handler-bridge until the receipt transaction commits.
