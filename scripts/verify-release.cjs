@@ -21,7 +21,10 @@ const runtimePins=new Map(manifest.files.map(file=>[file.path,file.sha256]));
 for(const file of writers)assert.equal(file.sha256,runtimePins.get(file.path),'Writer source mismatch: '+file.path);
 assert.equal(release.publicConfiguration.BIMCHAT_HISTORY_CHECKPOINT_FILE_ID,String(review.fileId),'Checkpoint pilot scope');
 assert.equal(release.driveBuild,manifest.newBuild);
-assert(review.participants.every(p=>p.agentBuild===release.driveBuild),'Client build mismatch');
+const approved={'arbor.p@aedbim.com':manifest.newBuild,'info@aedbim.com':manifest.oldBuild};
+assert.deepEqual(release.driveBuildByParticipant,approved);
+assert.deepEqual(review.participants.map(p=>p.email).sort(),Object.keys(approved).sort());
+for(const p of review.participants)assert.equal(p.agentBuild,approved[p.email],'Client build mismatch');
 assert.equal(release.addinBuild,manifest.newAddin);
 assert(review.participants.every(p=>p.addinBuild===release.addinBuild),'Add-in build mismatch');
 if(process.argv.includes('--environment')){
