@@ -26,7 +26,9 @@ assert.deepEqual(release.driveBuildByParticipant,approved);
 assert.deepEqual(review.participants.map(p=>p.email).sort(),Object.keys(approved).sort());
 for(const p of review.participants)assert.equal(p.agentBuild,approved[p.email],'Client build mismatch');
 assert.equal(release.addinBuild,manifest.newAddin);
-assert(review.participants.every(p=>p.addinBuild===release.addinBuild),'Add-in build mismatch');
+const addins={'arbor.p@aedbim.com':manifest.newAddin,'info@aedbim.com':manifest.oldAddin};
+assert.deepEqual(release.addinBuildByParticipant,addins);
+for(const p of review.participants)assert.equal(p.addinBuild,addins[p.email],'Add-in build mismatch');
 if(process.argv.includes('--environment')){
  for(const [key,value] of Object.entries(release.publicConfiguration))assert.equal(process.env[key],value,'Deployment configuration mismatch: '+key);
 }
