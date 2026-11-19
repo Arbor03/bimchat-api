@@ -30,8 +30,9 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nati
   let current=path.join(dir,name+'.base');const base=await fsp.open(current,'wx+');try{for(let index=0,at=0;at<pin.size;index++){const row=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_base_chunks WHERE file_id=$1 AND file_name=$2 AND chunk_index=$3',[file,name,index])).rows[0];need(row&&row.bytes.length===Math.min(block,pin.size-at),'STREAM_DELTA_BASELINE');await base.writeFile(row.bytes);at+=row.bytes.length;}need(await codec.hash(base,pin.size)===pin.sha256,'STREAM_DELTA_BASELINE');}finally{await base.close();}
   return {filePath:current,sequence:start};
  }
- async function baseFile(c,file,name,sequence,dir,checkpoint=null){
-  const base=await checkpoints.materialize(checkpoint,name,dir) || await initialFile(c,file,name,sequence,dir);
+ async function baseFile(c,file,name,sequence,dir,checkpoint=null,history=null){
+  const cached=await checkpoints.materialize(checkpoint,name,dir);
+  const base=cached || await initialFile(c,file,name,sequence,dir);
   let current=base.filePath;const start=base.sequence;
   // Cursor paging: do not load an unbounded history into RAM.
   for(let cursor=start;cursor<sequence;){const op=(await c.query('SELECT sequence,operation_id,payload FROM bimchat_direct_ownership.model_stream_operations WHERE file_id=$1 AND sequence>$2 AND sequence<=$3 ORDER BY sequence LIMIT 1',[file,cursor,sequence])).rows[0];
@@ -41,15 +42,20 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nati
    if(beforeSplit&&op.payload.patch.Schema===4)protocol.validateNativeStream(op.payload.patch,splitLog.model);
    else if(historical)protocol.validateStream(op.payload.patch);else validatePatch(op.payload.patch);
    const f=op.payload.patch.Files.find(f=>f.Name===name);need(f,'STREAM_DELTA_HISTORY');const next=await apply(c,file,op.operation_id,f,current,dir,name+'.'+op.sequence);await fsp.unlink(current);current=next;cursor=Number(op.sequence);}
+  // Each completed loop iteration validates and applies exactly one contiguous sequence.
+  if(history)history.push({name,source:cached?'checkpoint':'baseline',startSequence:start,replayed:sequence-start});
   return current;
  }
- async function verified(a,id){const c=await pool.connect(),dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-delta-'));try{
+ async function verified(a,id){
+  const history=checkpointEnabled && a.fileId===695 ? [] : null;
+  const started=history ? process.hrtime.bigint() : null;
+  const c=await pool.connect(),dir=await fsp.mkdtemp(path.join(temporaryRoot,'bimchat-delta-'));try{
   const r=await row(c,a,id),body=r.document,p=body.patch;validatePatch(p);
   const saved=checkpointEnabled && p.PreviousSequence>=splitLog.sequence ? await checkpoints.lookup(c,checkpointCache,a.fileId,p.Generation,p.PreviousSequence) : null;
   let staged=checkpointEnabled && p.PreviousSequence>=splitLog.sequence ? checkpoints.stage(a.fileId,p) : null;
   for(const f of p.Files){let before;
    if(f.Name==='users.dat'){before=path.join(dir,'users.before');await users.known(c,a.fileId,body.usersBefore);const out=await fsp.open(before,'wx');try{for(let index=0;index<Math.ceil(body.usersBefore.length/block);index++)await out.writeFile(await users.chunk(c,a.fileId,body.usersBefore,index));}finally{await out.close();}}
-   else before=await baseFile(c,a.fileId,f.Name,p.PreviousSequence,dir,saved);
+   else before=await baseFile(c,a.fileId,f.Name,p.PreviousSequence,dir,saved,history);
    const after=await apply(c,a.fileId,id,f,before,dir,'new-'+f.Name);
    if(staged && f.Name!=='users.dat'){
     try{staged.files.set(f.Name,await fsp.readFile(after));}catch{staged=null;}
@@ -57,6 +63,10 @@ module.exports=function({pool,r2,temporaryRoot=os.tmpdir(),nativeModel=null,nati
    if(f.Name==='users.dat'){need(body.usersAfter.length===f.PostLength&&body.usersAfter.sha256===f.PostHash,'STREAM_USERS_PATCH');await c.query('BEGIN');try{const input=fs.createReadStream(after);try{await users.importStream(c,a.fileId,body.usersAfter,input);}finally{input.destroy();}need(await users.prefix(c,a.fileId,body.usersBefore,body.usersAfter),'USERS_INDEX_CHANGED');await c.query('COMMIT');}catch(e){await c.query('ROLLBACK');throw e;}}
   }
   if(staged)checkpointCache.staged=staged;
+  if(history)console.info(JSON.stringify({
+   event:'ownership_history_verified',fileId:a.fileId,operationId:id,sequence:p.Sequence,
+   previousSequence:p.PreviousSequence,verifyMs:Number(process.hrtime.bigint()-started)/1e6,files:history
+  }));
   return body;
  }finally{c.release();await fsp.rm(dir,{recursive:true,force:true});}}
  async function get(a,b){const c=await pool.connect();try{const op=(await c.query('SELECT payload FROM bimchat_direct_ownership.model_stream_operations WHERE file_id=$1 AND operation_id=$2',[a.fileId,b.operationId])).rows[0];need(op?.payload?.patch?.Schema===schema,'STREAM_DELTA_NOT_COMMITTED');const f=op.payload.patch.Files.find(f=>f.Name===b.name);need(f&&Number.isSafeInteger(b.index)&&b.index>=0&&b.index<Math.ceil(f.DeltaLength/block),'STREAM_DELTA_CHUNK');const part=(await c.query('SELECT bytes FROM bimchat_direct_ownership.stream_image_chunks WHERE file_id=$1 AND operation_id=$2 AND file_name=$3 AND chunk_index=$4',[a.fileId,b.operationId,b.name,b.index])).rows[0];need(part,'STREAM_DELTA_INCOMPLETE');return {operationId:b.operationId,name:b.name,index:b.index,bytes:part.bytes.toString('base64')};}finally{c.release();}}
