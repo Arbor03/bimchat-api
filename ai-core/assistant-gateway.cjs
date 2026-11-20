@@ -11,6 +11,8 @@ const TENANT='bimchat-assistant-test';
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 const PILOT_PROJECT='BIM Link AI Pilot';
 const PILOT_FILE='Pilot-A.rvt';
+const LEGACY_WRITES=['revit_level_modify'];
+const DOCUMENTATION_WRITES=['revit_view_create','revit_sheet_create','revit_viewport_place','revit_text_note_create'];
 
 function mount({app,authenticateToken,pool,env=process.env,workerRequest}){
  if(env.BIMLINK_ASSISTANT_TEST!=='1')return false;
@@ -31,6 +33,18 @@ function mount({app,authenticateToken,pool,env=process.env,workerRequest}){
     typeof row.allowWrite!=='boolean'||
     !/^[0-9a-f]{64}$/.test(row.tokenSha256)))throw Error('AI_TEST_DEVICE_CONFIGURATION_INVALID');
  if(production&&devices.some(row=>row.fileId!==pilotFile))throw Error('AI_PILOT_FILE_SCOPE_REQUIRED');
+ const pilotFiles=new Map([[pilotFile,{name:PILOT_FILE,writeTools:LEGACY_WRITES}]]);
+ const documentation=production&&env.BIMLINK_ASSISTANT_DOCUMENTATION_FILE_JSON
+  ?JSON.parse(env.BIMLINK_ASSISTANT_DOCUMENTATION_FILE_JSON):null;
+ if(documentation){
+  const {fileId,fileName,subject,deviceId}=documentation;
+  const existing=devices.find(row=>row.fileId===pilotFile&&row.subject===subject&&row.deviceId===deviceId&&row.allowWrite);
+  if(typeof fileId!=='string'||!ID.test(fileId)||fileId===pilotFile||typeof fileName!=='string'||
+     fileName.length>255||!/^.+\.rvt$/iu.test(fileName)||fileName.toLowerCase()===PILOT_FILE.toLowerCase()||!existing)
+   throw Error('AI_PILOT_DOCUMENTATION_BINDING_INVALID');
+  pilotFiles.set(fileId,{name:fileName,writeTools:DOCUMENTATION_WRITES});
+  devices.push({...existing,fileId});
+ }
  const request=workerRequest||createClient({url:env.BIMLINK_ASSISTANT_WORKER_URL,
   key:env.BIMLINK_ASSISTANT_GATEWAY_KEY,timeoutMs:15000});
 
@@ -64,7 +78,8 @@ function mount({app,authenticateToken,pool,env=process.env,workerRequest}){
   try{
    if(!await projectAccess(pool,project,req.user.id,req.user.email))
     return fail(403,'forbidden','The account is not authorized for this project.');
-   if(req.method==='POST'&&route.length===1&&route[0]==='revit-sessions'){
+   const registration=req.method==='POST'&&route.length===1&&route[0]==='revit-sessions';
+   if(registration){
     const device=devices.find(row=>row.projectId===project&&row.subject===String(req.user.id)&&
      row.fileId===String(body.fileId)&&row.deviceId===body.deviceId);
     const proof=req.get('X-BIMLink-Device-Token');
@@ -74,16 +89,21 @@ function mount({app,authenticateToken,pool,env=process.env,workerRequest}){
    }
    const linked=production
     ?await pool.query(`SELECT f.id,f.file_name FROM revit_files f JOIN projects p ON p.id=f.project_id
-       WHERE p.id=$1 AND f.id=$2 AND p.name=$3 AND lower(f.file_name)=lower($4)`,
-       [Number(project),Number(pilotFile),PILOT_PROJECT,PILOT_FILE])
+       JOIN unnest($2::integer[],$4::text[]) AS approved(id,file_name)
+         ON approved.id=f.id AND approved.file_name=lower(f.file_name)
+       WHERE p.id=$1 AND p.name=$3`,
+       [Number(project),Array.from(pilotFiles.keys(),Number),PILOT_PROJECT,
+        Array.from(pilotFiles.values(),file=>file.name.toLowerCase())])
     :await pool.query('SELECT id,file_name FROM revit_files WHERE project_id=$1',[Number(project)]);
-   if(production&&linked.rows.length!==1)return fail(403,'pilot_file_unavailable','The authorized pilot file is unavailable.');
    // Only the HMAC-authenticated gateway supplies the live account/file/device grants.
    const accountDevices=devices.filter(device=>device.projectId===project&&device.subject===String(req.user.id));
    const files=Object.fromEntries(linked.rows.map(row=>[String(row.id),{
     name:String(row.file_name).slice(0,255),devices:Object.fromEntries(accountDevices
-     .filter(device=>device.fileId===String(row.id)).map(device=>[device.deviceId,device.allowWrite]))
+     .filter(device=>device.fileId===String(row.id)).map(device=>[device.deviceId,device.allowWrite])),
+    ...(production?{writeTools:pilotFiles.get(String(row.id)).writeTools}:{})
    }]));
+   if(production&&(!Object.keys(files).length||(registration&&!Object.hasOwn(files,String(body.fileId)))))
+    return fail(403,'pilot_file_unavailable','The authorized pilot file is unavailable.');
    const upstream=await request('POST',INTERNAL_PATH,{method:req.method,route,body,files,grant},
     {subject:String(req.user.id),tenant:TENANT,project,permissions:['assistant.read']});
    if(![200,201,202,400,401,403,404,409,413,429,503].includes(upstream.status)||!upstream.data?.body)
