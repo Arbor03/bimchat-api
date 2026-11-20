@@ -50,7 +50,7 @@ async function streamToBuffer(stream) {
         });
 
         // 3) Ngarko .frag te R2
-        const fragKey = `web-frag/file-${fileId}/model.frag`;
+        const fragKey = ifcR2Key.replace(/^web-ifc\//, 'web-frag/').replace(/\.ifc$/, '.frag');
         await s3.send(new PutObjectCommand({
             Bucket: process.env.B2_BUCKET_NAME,
             Key: fragKey,
@@ -58,8 +58,13 @@ async function streamToBuffer(stream) {
             ContentType: 'application/octet-stream'
         }));
 
+        s3.destroy();
         parentPort.postMessage({ ok: true, fragKey });
+        // The IFC runtime can retain handles after conversion. All storage writes are awaited.
+        // Explicitly finish this worker so the coordinating transaction can commit.
+        process.exit(0);
     } catch (err) {
         parentPort.postMessage({ ok: false, error: (err && err.message) ? err.message : String(err) });
+        process.exit(1);
     }
 })();

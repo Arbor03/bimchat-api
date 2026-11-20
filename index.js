@@ -1578,7 +1578,7 @@ app.post('/web-export/:fileId/upload-url', authenticateToken, async (req, res) =
         );
         if (pm.rows.length === 0) return res.status(403).json({ error: 'Not a member of this project' });
 
-        const r2Key = `web-ifc/file-${fileId}/model.ifc`;
+        const r2Key = `web-ifc/file-${fileId}/${crypto.randomUUID()}/model.ifc`;
         const command = new PutObjectCommand({
             Bucket: process.env.B2_BUCKET_NAME,
             Key: r2Key,
@@ -1599,6 +1599,10 @@ app.post('/web-export/:fileId/confirm', authenticateToken, async (req, res) => {
     try {
         const fileId = parseInt(req.params.fileId);
         const { r2Key, mapping } = req.body;
+        const prefix = `web-ifc/file-${fileId}/`;
+        const validKey = typeof r2Key === 'string' && r2Key.startsWith(prefix) &&
+            /^(?:[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\/)?model\.ifc$/.test(r2Key.slice(prefix.length));
+        if (!validKey) return res.status(400).json({ error: 'Invalid IFC key for this model' });
 
         const fr = await pool.query(`SELECT project_id FROM revit_files WHERE id = $1`, [fileId]);
         if (fr.rows.length === 0) return res.status(404).json({ error: 'File not found' });
@@ -1631,10 +1635,11 @@ app.post('/web-export/:fileId/confirm', authenticateToken, async (req, res) => {
         }
 
         // Nis konvertimin Fragments ne sfond (fire-and-forget)
-        if (ownershipEnabled) await startFragConversion(fileId, r2Key);
+        const waitForViewer = ownershipEnabled || req.body.waitForViewer === true;
+        if (waitForViewer) await runCoordinatedFragConversion(fileId, r2Key);
         else startFragConversion(fileId, r2Key);
 
-        res.json({ success: true, count: map.length });
+        res.json({ success: true, count: map.length, viewerReady: waitForViewer });
     } catch (err) {
         console.error('web-export confirm error:', err);
         res.status(500).json({ error: err.message });
