@@ -54,6 +54,10 @@ module.exports=function({pool,timeoutMs=20000}){
   }finally{clearTimeout(timer);subscribers.delete(changed);abort?.removeEventListener('abort',cancelled);}
  }
  function mount(app,jwt){
+  if(process.env.BIMLINK_ASSISTANT_TEST==='1'){
+   try{require('./ai-core/assistant-gateway.cjs').mount({app,authenticateToken:jwt,pool});}
+   catch{console.error('BIM Link AI pilot unavailable: gateway configuration could not be loaded.');}
+  }
   app.post('/drive/catalog/wait',jwt,async(req,res)=>{const abort=new AbortController();const close=()=>abort.abort();res.on('close',close);
    try{if(!req.body||Object.keys(req.body).join(',')!=='cursor')throw Error('CATALOG_NOTIFICATION_REQUEST');if(process.env.BIMCHAT_ARCHIVE_FOLDERS==='1'&&req.get('X-BIMChat-Device'))await require('./archive-folders/service.cjs').deviceAuth(pool,req);res.set('Cache-Control','no-store');res.json(await wait(req.user.email,req.body.cursor,abort.signal));}
    catch(e){if(!res.destroyed)res.status(503).json({code:'CATALOG_NOTIFICATION_UNAVAILABLE'});}finally{res.removeListener('close',close);}
