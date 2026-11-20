@@ -24,6 +24,7 @@ const rawPool = new Pool({
 });
 
 const pool = require('./product-writer-fences.cjs')({enabled:ownershipEnabled,app,rawPool});
+require('./revit-panel.cjs')(app,rawPool,authenticateToken);
 const catalogNotifications = require('./product-catalog-notifications.cjs')({pool:rawPool});
 require('./archive-folders/routes.cjs')({app,pool:rawPool,auth:authenticateToken,enabled:process.env.BIMCHAT_ARCHIVE_FOLDERS==='1',ownershipEnabled});
 app.use(catalogNotifications.middleware);
@@ -352,6 +353,7 @@ async function initDB() {
 
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_id INTEGER DEFAULT -1`); } catch {}
         try { await pool.query(`ALTER TABLE messages ADD COLUMN element_name TEXT`); } catch {}
+        await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'Normal', ADD COLUMN IF NOT EXISTS due_date DATE`);
         try { await pool.query(`ALTER TABLE tasks ADD COLUMN file_id INTEGER REFERENCES revit_files(id) ON DELETE SET NULL`); } catch {}
         try { await pool.query(`ALTER TABLE messages ADD COLUMN file_id INTEGER REFERENCES revit_files(id) ON DELETE SET NULL`); } catch {}
         try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_tasks_file ON tasks(file_id)`); } catch {}

@@ -6,8 +6,8 @@ const read=name=>JSON.parse(fs.readFileSync(path.join(root,name),'utf8').replace
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex').toUpperCase();
 const canonical=value=>Array.isArray(value)?'['+value.map(canonical).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}':JSON.stringify(value);
 const manifest=read('release/manifest.json'),release=read('release/production.json'),review=read('ownership-review.json');
-assert.equal(manifest.files.length,109,'Unexpected reviewed runtime inventory');
-assert.equal(new Set(manifest.files.map(file=>file.path)).size,109,'Duplicate runtime inventory entry');
+assert.equal(manifest.files.length,110,'Unexpected reviewed runtime inventory');
+assert.equal(new Set(manifest.files.map(file=>file.path)).size,110,'Duplicate runtime inventory entry');
 for(const file of manifest.files){
  assert(!path.isAbsolute(file.path)&&!file.path.split(/[\\/]/).includes('..'),'Invalid manifest path');
  assert.equal(hash(fs.readFileSync(path.join(root,file.path))),file.sha256,'Unreviewed runtime change: '+file.path);
@@ -32,4 +32,4 @@ for(const p of review.participants)assert.equal(p.addinBuild,addins[p.email],'Ad
 if(process.argv.includes('--environment')){
  for(const [key,value] of Object.entries(release.publicConfiguration))assert.equal(process.env[key],value,'Deployment configuration mismatch: '+key);
 }
-console.log('Verified 109 runtime files, writer sources, pilot model, review digest and client build.');
+console.log('Verified 110 runtime files, writer sources, pilot model, review digest and client build.');

@@ -61,7 +61,7 @@
   },
   {
     "path": "index.js",
-    "sha256": "30BD3D0D279190F0B9FE748E10B6ACD40FA8B9A04F9EB6A112E56F83A47D7E88"
+    "sha256": "03A866A59225CD8E75DBE8A63E46BCE321E474B0C6B6580B17364909D0835C77"
   },
   {
     "path": "product-baseline-binding.cjs",
@@ -218,6 +218,10 @@
   {
     "path": "receiver-open-v1/receiver-transactions.cjs",
     "sha256": "7C0FE478042DD3853909F5141CF7D93A9373BF52F6A2BB660468C68684D6A91B"
+  },
+  {
+    "path": "revit-panel.cjs",
+    "sha256": "9845A47B9A28081D6319BC367FA3F981D7AD48D75432806688F5F2FF4E02950C"
   },
   {
     "path": "scoped-api-v11/baseline-r2.cjs",
